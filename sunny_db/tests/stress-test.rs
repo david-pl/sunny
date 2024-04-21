@@ -12,7 +12,7 @@ struct PowerValues {
 
 #[test]
 fn stress_test() {
-    // generate a bunch of data -- WARNING if you make segments too small writing is so fast that data is lost!
+    // generate a bunch of data
     let segment_size = 500;
     let segment_number = 1001;
     let test_db_path = "./tests/stress-test-data";
@@ -29,6 +29,8 @@ fn stress_test() {
                 power_used: rng.gen_range(-1e3..1e3)
             };
             tiny_db.insert_value_at_current_time(power_vals);
+            // sleep here is required otherwise data loss occurs because we're writing too fast
+            std::thread::sleep(Duration::from_nanos(1));
         }
     }
 
