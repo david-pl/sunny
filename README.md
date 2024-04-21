@@ -1,7 +1,9 @@
-# sunny - Simple app to gather power data for my photovoltaic cells
+## sunny
+
+Simple app to gather power data for my photovoltaic cells
 
 
-# Running:
+## Running:
 
 ```bash
 $ ./sunny --help
