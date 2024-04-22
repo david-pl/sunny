@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sunny_db::timeseries_db::SunnyDB;
 use tokio::sync::RwLock;
 use tokio::signal;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::time::interval;
 use reqwest;
 use anyhow::{self, Context};
-use axum;
+use axum::{self, extract::Path};
 use clap::Parser;
 
 
@@ -56,7 +56,8 @@ async fn main() {
     // writes should be pretty fast so that should be fine as we can have multiple readers
     let db_write_lock = Arc::new(RwLock::new(sunny_db));
     let db_shutdown_lock = Arc::clone(&db_write_lock);
-    let db_read_lock = Arc::clone(&db_write_lock);
+    let db_read_lock_1 = Arc::clone(&db_write_lock);
+    let db_read_lock_2 = Arc::clone(&db_write_lock);
 
     println!("Spawning database writer...");
     let granularity = Duration::from_secs(args.granularity);
@@ -73,7 +74,13 @@ async fn main() {
     // build our application with a route
     let app = axum::Router::new()
         // `GET /` goes to `root`
-        .route("/", axum::routing::get(move || landing_page(db_read_lock)));
+        .route("/", axum::routing::get(move || landing_page(db_read_lock_1)))
+        .route("/values/:start_time/:end_time",
+            axum::routing::get(
+                move |Path((start_time, end_time)): Path<(u64, u64)>| {
+                     get_values_in_time_range(db_read_lock_2, Path((start_time, end_time)))
+                }
+        ));
         // .with_state(db_read_lock);
 
     // run our app with hyper, listening globally on port
@@ -131,6 +138,36 @@ async fn landing_page(db_read_lock: Arc<RwLock<SunnyDB<PowerValues>>>) -> String
     let current_values = reader.time_series.get_current_values();
     
     header.push_str(&(serde_json::to_string_pretty(&current_values).unwrap_or("".to_string())));
+    header
+}
+
+async fn get_values_in_time_range(
+    db_read_lock: Arc<RwLock<SunnyDB<PowerValues>>>,
+    Path((start_time, end_time)): Path<(u64, u64)>
+) -> String {
+    let mut header = format!("Reading values in range {} to {}\n\n", start_time, end_time).to_owned();
+
+    let reader = db_read_lock.read().await;
+
+    let system_start_time = UNIX_EPOCH + Duration::from_millis(start_time);
+    let system_end_time = UNIX_EPOCH + Duration::from_millis(end_time);
+
+    let read_values = reader.get_values_in_range(system_start_time, system_end_time);
+
+    match read_values {
+        Some(vals) => { 
+            let json = serde_json::to_string_pretty(&vals);
+            match json {
+                Ok(j) => header.push_str(&j),
+                Err(e) => {
+                    println!("Error creating json out of values: {}", e);
+                    header.push_str(&(format!("Error creating json out of values: {}", e)));
+                }
+            };
+        },
+        None => header.push_str("No data found")
+    };
+    
     header
 }
 
