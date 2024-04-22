@@ -10,11 +10,13 @@ pub struct SunnyDB<T> {
     time_series_cache_size: usize,
     data_path: String,
     /// The zstd compression level
-    compression_level: i32
+    compression_level: i32,
+    /// Specify at which point a time series segment should be written to disk when the database is closed
+    data_loss_threshold: usize
 }
 
 impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
-    pub fn new(time_series_cache_size: usize, dir_path: &str, compression_level: i32) -> Self {
+    pub fn new(time_series_cache_size: usize, dir_path: &str, compression_level: i32, data_loss_threshold: usize) -> Self {
         let data_dir_path = Self::init_directory(dir_path);
 
         let time_series = TinyTimeSeries::<T>::new(time_series_cache_size);
@@ -23,6 +25,7 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
             time_series_cache_size: time_series_cache_size,
             data_path: data_dir_path,
             compression_level: compression_level,
+            data_loss_threshold: data_loss_threshold
         }
     }
 
@@ -50,7 +53,7 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         // delete file again
         let delete_file = remove_file(permission_file_path);
         match delete_file {
-            Err(e) => panic!("Error while trying to delete database test file at {}. The error was: {}", data_dir_path, e), //TODO: warn here? Needs log crate
+            Err(e) => panic!("Error while trying to delete database test file at {}. The error was: {}", data_dir_path, e), //TODO: warn here? Could use tracing crate (already used by anyhow)
             _ => ()
         }
 
@@ -70,6 +73,18 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
             };
             self.time_series = TinyTimeSeries::<T>::new(self.time_series_cache_size);
         }
+    }
+
+    /// persists the values currently in the time series without emptying the time series
+    /// to prevent cluttering the DB with many small files, a threshold for the segment
+    /// size is respected; this can be defined using the data_loss_threshold attribute
+    pub fn lossy_persist(&mut self) {
+        if self.data_loss_threshold < self.time_series.len() {
+            self.export_time_series_to_file().ok();
+        } else {
+            println!("Warning: deliberately losing data on closing DB since there were only {} values in the time series and the threshold is set to {}", self.time_series.len(), self.data_loss_threshold);
+        }
+
     }
 
     fn export_time_series_to_file(&self) -> Result<(), std::io::Error> {

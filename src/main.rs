@@ -2,6 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::time::Duration;
 use sunny_db::timeseries_db::SunnyDB;
 use tokio::sync::RwLock;
+use tokio::signal;
 use std::sync::Arc;
 use tokio::time::interval;
 use reqwest;
@@ -27,6 +28,16 @@ struct Args {
     // Path to database directory
     #[arg(long)]
     db_path: String,
+
+    // Time series segment size
+    #[arg(long, default_value_t = 100)]
+    segment_size: usize,
+
+    // Time series loss threshold: during graceful shutdown, data in memory is persisted
+    // if there's more values than set via the threshold; this is to avoid cluttering the DB
+    // with small segments; set to 0 to always store any data
+    #[arg(long, default_value_t = 10)]
+    loss_threshold: usize
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
@@ -39,11 +50,12 @@ struct PowerValues {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let tiny_db = SunnyDB::<PowerValues>::new(10, &(&args.db_path), 2);
+    let sunny_db = SunnyDB::<PowerValues>::new(args.segment_size, &(&args.db_path), 2, args.loss_threshold);
 
     // create an RW lock that locks the entire DB during writes;
     // writes should be pretty fast so that should be fine as we can have multiple readers
-    let db_write_lock = Arc::new(RwLock::new(tiny_db));
+    let db_write_lock = Arc::new(RwLock::new(sunny_db));
+    let db_shutdown_lock = Arc::clone(&db_write_lock);
     let db_read_lock = Arc::clone(&db_write_lock);
 
     println!("Spawning database writer...");
@@ -69,7 +81,9 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(&(args.bind)).await.unwrap();
     println!("Listening on http://{}", args.bind);
     println!("Starting now! Everything looks fantastic! Enjoy!");
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(db_shutdown_lock))
+        .await.unwrap();
 }
 
 async fn fetch_and_write_values_to_db(
@@ -85,8 +99,8 @@ async fn fetch_and_write_values_to_db(
         let values = fetch_power_values(&full_url).await;
         match values {
             Ok(v) => {
-                let mut tiny_db = db_lock.write().await;
-                tiny_db.insert_value_at_current_time(v);
+                let mut sunny_db = db_lock.write().await;
+                sunny_db.insert_value_at_current_time(v);
             },
             Err(e) => println!("Error encountered while trying to fetch latest data: {}", e)
         }
@@ -118,4 +132,31 @@ async fn landing_page(db_read_lock: Arc<RwLock<SunnyDB<PowerValues>>>) -> String
     
     header.push_str(&(serde_json::to_string_pretty(&current_values).unwrap_or("".to_string())));
     header
+}
+
+async fn shutdown_signal(db_shutdown_lock: Arc<RwLock<SunnyDB<PowerValues>>>) {
+    // from https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs <3
+
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    // flush the database
+    let mut write_lock = db_shutdown_lock.write().await;
+    write_lock.lossy_persist();
 }
