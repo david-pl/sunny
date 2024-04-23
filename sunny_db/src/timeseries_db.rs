@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use crate::timeseries::TinyTimeSeries;
+use crate::timeseries::{TinyTimeSeries, UnixTimestamp};
 
 pub struct SunnyDB<T> {
     pub time_series: TinyTimeSeries<T>,  // TODO: make this private? Was only used for debugging
@@ -192,19 +192,15 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     }
 
     fn find_persisted_segment_index(&self, files: &Vec<fs::DirEntry>, start_time: SystemTime, end_time: SystemTime) -> (Option<usize>, Option<usize>)  {
-        let segments: Vec<Option<(u128, u128)>> = files
+        let segments: Vec<Option<(u64, u64)>> = files
             .iter()
             .map(|file| SunnyDB::<T>::parse_filename_to_times(file))
             .collect();
 
 
-        let start_timestamp = start_time.duration_since(UNIX_EPOCH)
-            .expect("Start time precedes unix epoch!")
-            .as_millis();
+        let start_timestamp = start_time.timestamp();
 
-        let end_timestamp = end_time.duration_since(UNIX_EPOCH)
-            .expect("Start time precedes unix epoch!")
-            .as_millis();
+        let end_timestamp = end_time.timestamp();
 
         // check if we're getting all the segments
         let first_segment = segments.iter().find(|&seg| seg.is_some());
@@ -250,19 +246,19 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         (start_segment_index, end_segment_index)
     }
 
-    fn parse_filename_to_times(file: &fs::DirEntry) -> Option<(u128, u128)>{
+    fn parse_filename_to_times(file: &fs::DirEntry) -> Option<(u64, u64)>{
         let file_name = file.file_name();
         let split_name: Vec<&str> = file_name.to_str()?.split("-").collect();
         if split_name.len() != 2 {
             return None
         }
 
-        let start_timestamp = match split_name[0].parse::<u128>() {
+        let start_timestamp = match split_name[0].parse::<u64>() {
             Ok(t) => t,
             Err(_) => return None
         };
 
-        let end_timestamp = match split_name[1].parse::<u128>() {
+        let end_timestamp = match split_name[1].parse::<u64>() {
             Ok(t) => t,
             Err(_) => return None
         };

@@ -17,6 +17,19 @@ pub struct TinyTimeSeries<T> {
     end_time: Option<SystemTime>
 }
 
+pub trait UnixTimestamp {
+    fn timestamp(&self) -> u64;
+}
+
+impl UnixTimestamp for SystemTime {
+    fn timestamp(&self) -> u64 {
+        self.duration_since(UNIX_EPOCH)
+            .expect("Time precedes unix epoch!")
+            .as_millis()
+            as u64 // we're not going beyond 500 Mio years
+    }
+}
+
 impl <T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
     pub fn new(init_size: usize) -> Self {
         let data = Vec::<TimeSeriesEntry<T>>::with_capacity(init_size);
@@ -51,19 +64,15 @@ impl <T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
         self.end_time
     }
 
-    pub fn get_unix_start_timestamp_as_millis(&self) -> Option<u128> {
+    pub fn get_unix_start_timestamp_as_millis(&self) -> Option<u64> {
         let start = self.start_time?;
-        let timestamp = start.duration_since(UNIX_EPOCH)
-            .expect("Start time precedes unix epoch!")
-            .as_millis();
+        let timestamp = start.timestamp();
         return Some(timestamp)
     }
 
-    pub fn get_unix_end_timestamp_as_millis(&self) -> Option<u128> {
+    pub fn get_unix_end_timestamp_as_millis(&self) -> Option<u64> {
         let end = self.end_time?;
-        let timestamp = end.duration_since(UNIX_EPOCH)
-            .expect("End time precedes unix epoch!")
-            .as_millis();
+        let timestamp = end.timestamp();
         return Some(timestamp)
     }
 
@@ -157,14 +166,12 @@ impl <T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
             .collect()
     }
 
-    pub fn unix_timestamps_as_millis(&self) -> Vec<u128> {
+    pub fn unix_timestamps_as_millis(&self) -> Vec<u64> {
         self.data
             .iter()
             .map(|entry| entry
                     .system_time
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Timestamp before unix epoch encountered!")
-                    .as_millis()
+                    .timestamp()
                 )
             .collect()
     }
@@ -174,9 +181,7 @@ impl <T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
             .iter()
             .map(|entry| entry
                     .system_time
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Timestamp before unix epoch encountered!")
-                    .as_secs()
+                    .timestamp()
                 )
             .collect()
     }
