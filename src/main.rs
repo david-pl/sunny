@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use serde::{Deserialize, Serialize};
+use std::time::{Duration, UNIX_EPOCH};
 use sunny_db::timeseries_db::SunnyDB;
 use tokio::sync::RwLock;
 use tokio::signal;
@@ -47,6 +47,25 @@ struct PowerValues {
     power_used: f64,
 }
 
+/// Simple wrapper around Arc<RwLock> to make it read-only
+/// see also: https://stackoverflow.com/questions/70470631/getting-a-read-only-version-of-an-arcrwlockfoo
+#[derive(Clone)]
+struct DatabaseReadLock {
+    lock: Arc<RwLock<SunnyDB<PowerValues>>>
+}
+
+impl DatabaseReadLock {
+    fn new(lock: Arc<RwLock<SunnyDB<PowerValues>>>) -> Self {
+        DatabaseReadLock {
+            lock: lock
+        }
+    }
+
+    async fn read(&self) -> tokio::sync::RwLockReadGuard<'_, SunnyDB<PowerValues>> {
+        self.lock.read().await
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
@@ -56,8 +75,8 @@ async fn main() {
     // writes should be pretty fast so that should be fine as we can have multiple readers
     let db_write_lock = Arc::new(RwLock::new(sunny_db));
     let db_shutdown_lock = Arc::clone(&db_write_lock);
-    let db_read_lock_1 = Arc::clone(&db_write_lock);
-    let db_read_lock_2 = Arc::clone(&db_write_lock);
+    let db_read_lock_1 = DatabaseReadLock::new(Arc::clone(&db_write_lock));
+    let db_read_lock_2 = db_read_lock_1.clone();
 
     println!("Spawning database writer...");
     let granularity = Duration::from_secs(args.granularity);
@@ -131,7 +150,7 @@ async fn fetch_power_values(url: &str) -> anyhow::Result<PowerValues> {
     Ok(power_values)
 }
 
-async fn landing_page(db_read_lock: Arc<RwLock<SunnyDB<PowerValues>>>) -> String {
+async fn landing_page(db_read_lock: DatabaseReadLock) -> String {
     let mut header = "Hello from Sunny! The values currently being collected are shown below (refresh for update):\n\n".to_owned();
 
     let reader = db_read_lock.read().await;
@@ -142,7 +161,7 @@ async fn landing_page(db_read_lock: Arc<RwLock<SunnyDB<PowerValues>>>) -> String
 }
 
 async fn get_values_in_time_range(
-    db_read_lock: Arc<RwLock<SunnyDB<PowerValues>>>,
+    db_read_lock: DatabaseReadLock,
     Path((start_time, end_time)): Path<(u64, u64)>
 ) -> String {
     let mut header = format!("Reading values in range {} to {}\n\n", start_time, end_time).to_owned();
