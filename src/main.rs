@@ -1,15 +1,14 @@
-use serde::{Deserialize, Serialize};
-use std::time::{Duration, UNIX_EPOCH};
-use sunny_db::timeseries_db::SunnyDB;
-use tokio::sync::RwLock;
-use tokio::signal;
-use std::sync::Arc;
-use tokio::time::interval;
-use reqwest;
 use anyhow::{self, Context};
 use axum::{self, extract::Path};
 use clap::Parser;
-
+use reqwest;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::{Duration, UNIX_EPOCH};
+use sunny_db::timeseries_db::SunnyDB;
+use tokio::signal;
+use tokio::sync::RwLock;
+use tokio::time::interval;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -37,7 +36,7 @@ struct Args {
     // if there's more values than set via the threshold; this is to avoid cluttering the DB
     // with small segments; set to 0 to always store any data
     #[arg(long, default_value_t = 10)]
-    loss_threshold: usize
+    loss_threshold: usize,
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
@@ -51,14 +50,12 @@ struct PowerValues {
 /// see also: https://stackoverflow.com/questions/70470631/getting-a-read-only-version-of-an-arcrwlockfoo
 #[derive(Clone)]
 struct DatabaseReadLock {
-    lock: Arc<RwLock<SunnyDB<PowerValues>>>
+    lock: Arc<RwLock<SunnyDB<PowerValues>>>,
 }
 
 impl DatabaseReadLock {
     fn new(lock: Arc<RwLock<SunnyDB<PowerValues>>>) -> Self {
-        DatabaseReadLock {
-            lock: lock
-        }
+        DatabaseReadLock { lock: lock }
     }
 
     async fn read(&self) -> tokio::sync::RwLockReadGuard<'_, SunnyDB<PowerValues>> {
@@ -69,7 +66,8 @@ impl DatabaseReadLock {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let sunny_db = SunnyDB::<PowerValues>::new(args.segment_size, &(&args.db_path), 2, args.loss_threshold);
+    let sunny_db =
+        SunnyDB::<PowerValues>::new(args.segment_size, &(&args.db_path), 2, args.loss_threshold);
 
     // create an RW lock that locks the entire DB during writes;
     // writes should be pretty fast so that should be fine as we can have multiple readers
@@ -93,14 +91,17 @@ async fn main() {
     // build our application with a route
     let app = axum::Router::new()
         // `GET /` goes to `root`
-        .route("/", axum::routing::get(move || landing_page(db_read_lock_1)))
-        .route("/values/:start_time/:end_time",
-            axum::routing::get(
-                move |Path((start_time, end_time)): Path<(u64, u64)>| {
-                     get_values_in_time_range(db_read_lock_2, Path((start_time, end_time)))
-                }
-        ));
-        // .with_state(db_read_lock);
+        .route(
+            "/",
+            axum::routing::get(move || landing_page(db_read_lock_1)),
+        )
+        .route(
+            "/values/:start_time/:end_time",
+            axum::routing::get(move |Path((start_time, end_time)): Path<(u64, u64)>| {
+                get_values_in_time_range(db_read_lock_2, Path((start_time, end_time)))
+            }),
+        );
+    // .with_state(db_read_lock);
 
     // run our app with hyper, listening globally on port
     // very useful: https://github.com/tokio-rs/axum/tree/main/examples
@@ -109,17 +110,21 @@ async fn main() {
     println!("Starting now! Everything looks fantastic! Enjoy!");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(db_shutdown_lock))
-        .await.unwrap();
+        .await
+        .unwrap();
 }
 
 async fn fetch_and_write_values_to_db(
     db_lock: &RwLock<SunnyDB<PowerValues>>,
     granularity: Duration,
-    url: String
+    url: String,
 ) {
     let mut pause = interval(granularity);
 
-    let full_url = format!("http://{}/status/powerflow", url.strip_suffix("/").unwrap_or(&url));
+    let full_url = format!(
+        "http://{}/status/powerflow",
+        url.strip_suffix("/").unwrap_or(&url)
+    );
     loop {
         pause.tick().await;
         let values = fetch_power_values(&full_url).await;
@@ -127,24 +132,27 @@ async fn fetch_and_write_values_to_db(
             Ok(v) => {
                 let mut sunny_db = db_lock.write().await;
                 sunny_db.insert_value_at_current_time(v);
-            },
-            Err(e) => println!("Error encountered while trying to fetch latest data: {}", e)
+            }
+            Err(e) => println!("Error encountered while trying to fetch latest data: {}", e),
         }
     }
 }
 
 async fn fetch_power_values(url: &str) -> anyhow::Result<PowerValues> {
-    let current_values = reqwest::get(url)
-        .await?
-        .json::<serde_json::Value>()
-        .await?;
-    
+    let current_values = reqwest::get(url).await?.json::<serde_json::Value>().await?;
+
     let site_data = &current_values["site"];
 
     let power_values = PowerValues {
-        power_pv: site_data["P_PV"].as_f64().context("Couldn't obtain PV power from response")?,
-        power_grid: site_data["P_Grid"].as_f64().context("Couldn't obtain grid power from response")?,
-        power_used: site_data["P_Load"].as_f64().context("Couldn't obtain used power from response")?
+        power_pv: site_data["P_PV"]
+            .as_f64()
+            .context("Couldn't obtain PV power from response")?,
+        power_grid: site_data["P_Grid"]
+            .as_f64()
+            .context("Couldn't obtain grid power from response")?,
+        power_used: site_data["P_Load"]
+            .as_f64()
+            .context("Couldn't obtain used power from response")?,
     };
 
     Ok(power_values)
@@ -155,16 +163,17 @@ async fn landing_page(db_read_lock: DatabaseReadLock) -> String {
 
     let reader = db_read_lock.read().await;
     let current_values = reader.time_series.get_current_values();
-    
+
     header.push_str(&(serde_json::to_string_pretty(&current_values).unwrap_or("".to_string())));
     header
 }
 
 async fn get_values_in_time_range(
     db_read_lock: DatabaseReadLock,
-    Path((start_time, end_time)): Path<(u64, u64)>
+    Path((start_time, end_time)): Path<(u64, u64)>,
 ) -> String {
-    let mut header = format!("Reading values in range {} to {}\n\n", start_time, end_time).to_owned();
+    let mut header =
+        format!("Reading values in range {} to {}\n\n", start_time, end_time).to_owned();
 
     let reader = db_read_lock.read().await;
 
@@ -174,7 +183,7 @@ async fn get_values_in_time_range(
     let read_values = reader.get_values_in_range(system_start_time, system_end_time);
 
     match read_values {
-        Some(vals) => { 
+        Some(vals) => {
             let json = serde_json::to_string_pretty(&vals);
             match json {
                 Ok(j) => header.push_str(&j),
@@ -183,10 +192,10 @@ async fn get_values_in_time_range(
                     header.push_str(&(format!("Error creating json out of values: {}", e)));
                 }
             };
-        },
-        None => header.push_str("No data found")
+        }
+        None => header.push_str("No data found"),
     };
-    
+
     header
 }
 

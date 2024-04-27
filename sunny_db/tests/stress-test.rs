@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
-use sunny_db::timeseries_db;
 use rand::{thread_rng, Rng};
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant, UNIX_EPOCH};
+use sunny_db::timeseries_db;
 
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
 struct PowerValues {
@@ -17,7 +17,8 @@ fn stress_test() {
     let segment_number = 2501;
     let test_db_path = "./tests/stress-test-data";
 
-    let mut tiny_db = timeseries_db::SunnyDB::<PowerValues>::new(segment_size, &test_db_path, 2, 20);
+    let mut tiny_db =
+        timeseries_db::SunnyDB::<PowerValues>::new(segment_size, &test_db_path, 2, 20);
     let mut rng = thread_rng();
 
     let now = Instant::now();
@@ -26,7 +27,7 @@ fn stress_test() {
             let power_vals = PowerValues {
                 power_pv: rng.gen_range(-1e3..1e3),
                 power_grid: rng.gen_range(-1e3..1e3),
-                power_used: rng.gen_range(-1e3..1e3)
+                power_used: rng.gen_range(-1e3..1e3),
             };
             tiny_db.insert_value_at_current_time(power_vals);
             // sleep here is required otherwise data loss occurs because we're writing too fast
@@ -37,18 +38,37 @@ fn stress_test() {
     // last segment should still be in memory
     assert_eq!(tiny_db.time_series.get_current_values().len(), segment_size);
 
-    println!("Elapsed time for writing {} segments of size {}: {} ms", segment_number, segment_size, now.elapsed().as_millis());
+    println!(
+        "Elapsed time for writing {} segments of size {}: {} ms",
+        segment_number,
+        segment_size,
+        now.elapsed().as_millis()
+    );
 
     let now = Instant::now();
     let read_data = tiny_db.get_all_values();
-    println!("Elapsed time for reading {} segments of size {}: {} ms", segment_number, segment_size, now.elapsed().as_millis());
+    println!(
+        "Elapsed time for reading {} segments of size {}: {} ms",
+        segment_number,
+        segment_size,
+        now.elapsed().as_millis()
+    );
 
     assert!(read_data.is_some(), "Found no data in time series DB!");
 
-    assert_eq!(read_data.as_ref().unwrap().get_current_values().len(), segment_number * segment_size, "Fewer data points read than written!");
+    assert_eq!(
+        read_data.as_ref().unwrap().get_current_values().len(),
+        segment_number * segment_size,
+        "Fewer data points read than written!"
+    );
 
-    let time_series_start = read_data.unwrap().get_unix_start_timestamp_as_millis().unwrap();
-    let start_time = UNIX_EPOCH + Duration::from_millis(time_series_start.try_into().unwrap()) + Duration::from_millis(80);
+    let time_series_start = read_data
+        .unwrap()
+        .get_unix_start_timestamp_as_millis()
+        .unwrap();
+    let start_time = UNIX_EPOCH
+        + Duration::from_millis(time_series_start.try_into().unwrap())
+        + Duration::from_millis(80);
     let end_time = start_time + Duration::from_millis(50);
 
     let now = Instant::now();
@@ -58,14 +78,17 @@ fn stress_test() {
     assert!(few_values.is_some());
     assert!(few_values.as_ref().unwrap().len() >= 1);
 
-    println!("Elapsed time for reading {} values out of {}: {} ms",few_values.as_ref().unwrap().len(), segment_number * segment_size, read_few_elapsed);
+    println!(
+        "Elapsed time for reading {} values out of {}: {} ms",
+        few_values.as_ref().unwrap().len(),
+        segment_number * segment_size,
+        read_few_elapsed
+    );
     println!("{:?}", few_values.unwrap().len());
-
 
     // clean up
     std::fs::remove_dir_all(&test_db_path).ok();
 }
-
 
 #[test]
 fn test_data_loss() {
@@ -77,13 +100,11 @@ fn test_data_loss() {
     // write some values below loss threshold
     let mut rng = thread_rng();
     for _i in 0..4 {
-        tiny_db.insert_value_at_current_time(
-            PowerValues {
-                power_pv: rng.gen_range(-1e3..1e3),
-                power_grid: rng.gen_range(-1e3..1e3),
-                power_used: rng.gen_range(-1e3..1e3)
-            }
-        );
+        tiny_db.insert_value_at_current_time(PowerValues {
+            power_pv: rng.gen_range(-1e3..1e3),
+            power_grid: rng.gen_range(-1e3..1e3),
+            power_used: rng.gen_range(-1e3..1e3),
+        });
         std::thread::sleep(Duration::from_millis(10));
     }
 
@@ -101,13 +122,11 @@ fn test_data_loss() {
 
     // add more values so we're above threshold, but below the cache size so it's not dumping automatically
     for _i in 0..4 {
-        tiny_db.insert_value_at_current_time(
-            PowerValues {
-                power_pv: rng.gen_range(-1e3..1e3),
-                power_grid: rng.gen_range(-1e3..1e3),
-                power_used: rng.gen_range(-1e3..1e3)
-            }
-        );
+        tiny_db.insert_value_at_current_time(PowerValues {
+            power_pv: rng.gen_range(-1e3..1e3),
+            power_grid: rng.gen_range(-1e3..1e3),
+            power_used: rng.gen_range(-1e3..1e3),
+        });
         std::thread::sleep(Duration::from_millis(10));
     }
 
@@ -124,13 +143,11 @@ fn test_data_loss() {
 
     // write another set of values, should be dumped automatically now resulting in two files in total
     for _i in 0..4 {
-        tiny_db.insert_value_at_current_time(
-            PowerValues {
-                power_pv: rng.gen_range(-1e3..1e3),
-                power_grid: rng.gen_range(-1e3..1e3),
-                power_used: rng.gen_range(-1e3..1e3)
-            }
-        );
+        tiny_db.insert_value_at_current_time(PowerValues {
+            power_pv: rng.gen_range(-1e3..1e3),
+            power_grid: rng.gen_range(-1e3..1e3),
+            power_used: rng.gen_range(-1e3..1e3),
+        });
         std::thread::sleep(Duration::from_millis(10));
     }
 

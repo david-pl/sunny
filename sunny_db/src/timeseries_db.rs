@@ -1,22 +1,27 @@
+use crate::timeseries::{TinyTimeSeries, UnixTimestamp};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::fs::{self, create_dir_all, remove_file, File};
 use std::io::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use crate::timeseries::{TinyTimeSeries, UnixTimestamp};
 
 pub struct SunnyDB<T> {
-    pub time_series: TinyTimeSeries<T>,  // TODO: make this private? Was only used for debugging
+    pub time_series: TinyTimeSeries<T>,
     time_series_cache_size: usize,
     data_path: String,
     /// The zstd compression level
     compression_level: i32,
     /// Specify at which point a time series segment should be written to disk when the database is closed
-    data_loss_threshold: usize
+    data_loss_threshold: usize,
 }
 
-impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
-    pub fn new(time_series_cache_size: usize, dir_path: &str, compression_level: i32, data_loss_threshold: usize) -> Self {
+impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
+    pub fn new(
+        time_series_cache_size: usize,
+        dir_path: &str,
+        compression_level: i32,
+        data_loss_threshold: usize,
+    ) -> Self {
         let data_dir_path = Self::init_directory(dir_path);
 
         let time_series = TinyTimeSeries::<T>::new(time_series_cache_size);
@@ -25,7 +30,7 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
             time_series_cache_size: time_series_cache_size,
             data_path: data_dir_path,
             compression_level: compression_level,
-            data_loss_threshold: data_loss_threshold
+            data_loss_threshold: data_loss_threshold,
         }
     }
 
@@ -36,28 +41,37 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
             dir_path.to_owned() + "/data/"
         };
         let dir = create_dir_all(&data_dir_path);
-        
+
         match dir {
-            Err(e) => panic!("Error while trying to create database directory at {}. The error was: {}", dir_path, e),
-            _ => ()
+            Err(e) => panic!(
+                "Error while trying to create database directory at {}. The error was: {}",
+                dir_path, e
+            ),
+            _ => (),
         }
 
         let permission_file_path = data_dir_path.to_owned() + ".permission-check.tiny.db";
-        
+
         let file = File::create(&permission_file_path);
         match file {
-            Err(e) => panic!("Error while trying to create a database file at {}. The error was: {}", data_dir_path, e),
-            Ok(_) => ()
+            Err(e) => panic!(
+                "Error while trying to create a database file at {}. The error was: {}",
+                data_dir_path, e
+            ),
+            Ok(_) => (),
         }
 
         // delete file again
         let delete_file = remove_file(permission_file_path);
         match delete_file {
-            Err(e) => panic!("Error while trying to delete database test file at {}. The error was: {}", data_dir_path, e), //TODO: warn here? Could use tracing crate (already used by anyhow)
-            _ => ()
+            Err(e) => panic!(
+                "Error while trying to delete database test file at {}. The error was: {}",
+                data_dir_path, e
+            ), //TODO: warn here? Could use tracing crate (already used by anyhow)
+            _ => (),
         }
 
-        return data_dir_path
+        return data_dir_path;
     }
 
     pub fn insert_value_at_current_time(&mut self, value: T) {
@@ -69,7 +83,7 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         if self.time_series.len() >= self.time_series_cache_size {
             match self.export_time_series_to_file() {
                 Err(e) => panic!("Error while trying to dump time series: {}", e),
-                Ok(()) => ()  // TODO: log
+                Ok(()) => (), // TODO: log
             };
             self.time_series = TinyTimeSeries::<T>::new(self.time_series_cache_size);
         }
@@ -84,16 +98,23 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         } else {
             println!("Warning: deliberately losing data on closing DB since there were only {} values in the time series and the threshold is set to {}", self.time_series.len(), self.data_loss_threshold);
         }
-
     }
 
     fn export_time_series_to_file(&self) -> Result<(), std::io::Error> {
-        let start = self.time_series.get_unix_start_timestamp_as_millis().expect("Error: tried to export time series that has no start time set!");
-        let end = self.time_series.get_unix_end_timestamp_as_millis().expect("Error: tried to export time series that has no end time set!");
+        let start = self
+            .time_series
+            .get_unix_start_timestamp_as_millis()
+            .expect("Error: tried to export time series that has no start time set!");
+        let end = self
+            .time_series
+            .get_unix_end_timestamp_as_millis()
+            .expect("Error: tried to export time series that has no end time set!");
         let file_name = format!("{}-{}", start, end);
         let mut file = File::create(self.data_path.to_owned() + &file_name)?;
 
-        let data = self.time_series.to_compressed_json(self.compression_level)?;
+        let data = self
+            .time_series
+            .to_compressed_json(self.compression_level)?;
         file.write_all(&data)
     }
 
@@ -104,7 +125,11 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         self.get_values_in_range(UNIX_EPOCH, end_time)
     }
 
-    pub fn get_values_in_range(&self, start_time: SystemTime, end_time: SystemTime) -> Option<TinyTimeSeries<T>> {
+    pub fn get_values_in_range(
+        &self,
+        start_time: SystemTime,
+        end_time: SystemTime,
+    ) -> Option<TinyTimeSeries<T>> {
         if end_time < start_time {
             // someone accidentally switched start & end
             return self.get_values_in_range(end_time, start_time);
@@ -119,38 +144,41 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
 
         if self.time_series.get_start_time() > Some(end_time) {
             // everything's been covered by reading the persisted data
-            return read_data
+            return read_data;
         }
 
         // part of it is in the time-series
-        let ts = self.time_series.get_values_in_range(start_time, end_time).unwrap_or(TinyTimeSeries::<T>::empty());
+        let ts = self
+            .time_series
+            .get_values_in_range(start_time, end_time)
+            .unwrap_or(TinyTimeSeries::<T>::empty());
 
         return match read_data {
-            None => {
-                Some(ts)
-            },
+            None => Some(ts),
             Some(mut d) => {
                 d.append(&ts);
                 Some(d)
             }
-        }
+        };
     }
 
-    fn read_persisted_data(&self, start_time: SystemTime, end_time: SystemTime) -> Option<TinyTimeSeries<T>> {
+    fn read_persisted_data(
+        &self,
+        start_time: SystemTime,
+        end_time: SystemTime,
+    ) -> Option<TinyTimeSeries<T>> {
         // TODO: sort files
-        let mut files: Vec<fs::DirEntry> = fs::read_dir(&self.data_path).expect("Couldn't read data directory!")
+        let mut files: Vec<fs::DirEntry> = fs::read_dir(&self.data_path)
+            .expect("Couldn't read data directory!")
             .flatten()
             .collect();
-        files.sort_by(
-            |f1, f2| {
-                f1.path().cmp(&(f2.path()))
-            }
-        );
-        let (start_index, end_index) = self.find_persisted_segment_index(&files, start_time, end_time);
+        files.sort_by(|f1, f2| f1.path().cmp(&(f2.path())));
+        let (start_index, end_index) =
+            self.find_persisted_segment_index(&files, start_time, end_time);
 
         if start_index.is_none() && end_index.is_none() {
             // no data found
-            return None
+            return None;
         }
 
         // at least one entry was found in the files, so let's do what we can here
@@ -159,25 +187,24 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
 
         let ts: Vec<TinyTimeSeries<T>> = files[actual_start_index..actual_end_index]
             .into_iter()
-            .map(
-                |f| self.parse_file_to_timeseries(f)
-            )
+            .map(|f| self.parse_file_to_timeseries(f))
             .flatten()
             .collect();
 
-        
         // no data found apparently
         if ts.is_empty() {
-            return None
+            return None;
         }
 
         // only a single entry, which makes for a bit of a special case
         if ts.len() == 1 {
-            return ts[0].get_values_in_range(start_time, end_time)
+            return ts[0].get_values_in_range(start_time, end_time);
         }
 
         // multiple entries
-        let mut t0 = ts[0].get_values_in_range(start_time, end_time).unwrap_or(TinyTimeSeries::<T>::empty());
+        let mut t0 = ts[0]
+            .get_values_in_range(start_time, end_time)
+            .unwrap_or(TinyTimeSeries::<T>::empty());
 
         if ts.len() > 2 {
             for t in &ts[1..(ts.len() - 1)] {
@@ -185,18 +212,24 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
             }
         }
 
-        let t_n = ts[ts.len() - 1].get_values_in_range(start_time, end_time).unwrap_or(TinyTimeSeries::<T>::empty());
+        let t_n = ts[ts.len() - 1]
+            .get_values_in_range(start_time, end_time)
+            .unwrap_or(TinyTimeSeries::<T>::empty());
         t0.append(&t_n);
-        
+
         Some(t0)
     }
 
-    fn find_persisted_segment_index(&self, files: &Vec<fs::DirEntry>, start_time: SystemTime, end_time: SystemTime) -> (Option<usize>, Option<usize>)  {
+    fn find_persisted_segment_index(
+        &self,
+        files: &Vec<fs::DirEntry>,
+        start_time: SystemTime,
+        end_time: SystemTime,
+    ) -> (Option<usize>, Option<usize>) {
         let segments: Vec<Option<(u64, u64)>> = files
             .iter()
             .map(|file| SunnyDB::<T>::parse_filename_to_times(file))
             .collect();
-
 
         let start_timestamp = start_time.timestamp();
 
@@ -207,60 +240,50 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         let last_segment = segments.iter().rev().find(|&seg| seg.is_some());
         if first_segment.is_none() && last_segment.is_none() {
             // no persisted data
-            return (None, None)
+            return (None, None);
         }
 
         if end_timestamp < first_segment.unwrap().unwrap().0 {
-            return (None, None)
+            return (None, None);
         }
 
         let start_segment_index = if start_timestamp < first_segment.unwrap().unwrap().0 {
             // starting from the very beginning
             Some(0)
         } else {
-            segments.iter()
-                .position(
-                    |&seg| {
-                        match seg {
-                            None => false,
-                            Some(s) => s.0 <= start_timestamp
-                        }
-                    }
-                )
+            segments.iter().position(|&seg| match seg {
+                None => false,
+                Some(s) => s.0 <= start_timestamp,
+            })
         };
 
         let end_segment_index = if end_timestamp > last_segment.unwrap().unwrap().1 {
             Some(segments.len() - 1)
         } else {
-            segments.iter()
-            .position(
-                |&seg| {
-                    match seg {
-                        None => false,
-                        Some(s) => s.0 <= end_timestamp && end_timestamp <= s.1
-                    }
-                }
-            )
+            segments.iter().position(|&seg| match seg {
+                None => false,
+                Some(s) => s.0 <= end_timestamp && end_timestamp <= s.1,
+            })
         };
 
         (start_segment_index, end_segment_index)
     }
 
-    fn parse_filename_to_times(file: &fs::DirEntry) -> Option<(u64, u64)>{
+    fn parse_filename_to_times(file: &fs::DirEntry) -> Option<(u64, u64)> {
         let file_name = file.file_name();
         let split_name: Vec<&str> = file_name.to_str()?.split("-").collect();
         if split_name.len() != 2 {
-            return None
+            return None;
         }
 
         let start_timestamp = match split_name[0].parse::<u64>() {
             Ok(t) => t,
-            Err(_) => return None
+            Err(_) => return None,
         };
 
         let end_timestamp = match split_name[1].parse::<u64>() {
             Ok(t) => t,
-            Err(_) => return None
+            Err(_) => return None,
         };
 
         Some((start_timestamp, end_timestamp))
@@ -272,6 +295,4 @@ impl <T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         let _ = (&opened_file).read(&mut buf);
         TinyTimeSeries::<T>::from_compressed_json(&buf)
     }
-
 }
-
