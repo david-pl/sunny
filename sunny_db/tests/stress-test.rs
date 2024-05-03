@@ -84,10 +84,9 @@ fn stress_test() {
         segment_number * segment_size,
         read_few_elapsed
     );
-    println!("{:?}", few_values.unwrap().len());
 
     // clean up
-    std::fs::remove_dir_all(&test_db_path).ok();
+    // std::fs::remove_dir_all(&test_db_path).ok();
 }
 
 #[test]

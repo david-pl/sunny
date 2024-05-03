@@ -135,7 +135,8 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
             return self.get_values_in_range(end_time, start_time);
         }
 
-        if self.time_series.get_start_time() <= Some(start_time) {
+        let ts_start_time = self.time_series.get_start_time();
+        if ts_start_time.is_some() && ts_start_time.unwrap() <= start_time {
             // shortcut if all data is currently in memory anyway
             return self.time_series.get_values_in_range(start_time, end_time);
         }
@@ -167,7 +168,6 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         start_time: SystemTime,
         end_time: SystemTime,
     ) -> Option<TinyTimeSeries<T>> {
-        // TODO: sort files
         let mut files: Vec<fs::DirEntry> = fs::read_dir(&self.data_path)
             .expect("Couldn't read data directory!")
             .flatten()

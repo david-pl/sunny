@@ -1,2 +1,4 @@
 /target
 /db-test
+perf.data*
+flamegraph.svg

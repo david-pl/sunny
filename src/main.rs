@@ -42,7 +42,8 @@ struct Args {
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
 struct PowerValues {
     power_pv: f64,
-    power_grid: f64,
+    power_to_grid: f64,
+    power_from_grid: f64,
     power_used: f64,
 }
 
@@ -140,19 +141,35 @@ async fn fetch_and_write_values_to_db(
 
 async fn fetch_power_values(url: &str) -> anyhow::Result<PowerValues> {
     let current_values = reqwest::get(url).await?.json::<serde_json::Value>().await?;
-
     let site_data = &current_values["site"];
+
+    // convert some power values from negative to all positive values
+    // this is especially important for the grid values since they can be positive and negative,
+    // which would be annoying to deal with when computing e.g. the total amount of energy used,
+    // which would correspond to an integral over only the positive parts;
+    // so, we're splitting the values in two here
+
+    // the grid power value is negative if we're feeding into to the grid and positive if we're pulling from it
+    let grid_power = site_data["P_Grid"].as_f64().context("Couldn't obtain grid power from response")?;
+    let (power_to_grid, power_from_grid) = if grid_power < 0.0 {
+        (0.0, -grid_power)
+    } else {
+        (grid_power, 0.0)
+    };
+
+    // power load can only be negative, but still, let's work with positives only
+    let power_load = site_data["P_Load"]
+        .as_f64()
+        .context("Couldn't obtain used power from response")?;
+    let power_used = -power_load;
 
     let power_values = PowerValues {
         power_pv: site_data["P_PV"]
             .as_f64()
             .context("Couldn't obtain PV power from response")?,
-        power_grid: site_data["P_Grid"]
-            .as_f64()
-            .context("Couldn't obtain grid power from response")?,
-        power_used: site_data["P_Load"]
-            .as_f64()
-            .context("Couldn't obtain used power from response")?,
+        power_from_grid: power_from_grid,
+        power_to_grid: power_to_grid,
+        power_used: power_used,
     };
 
     Ok(power_values)
