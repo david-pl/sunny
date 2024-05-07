@@ -35,8 +35,8 @@ fn stress_test() {
         }
     }
 
-    // last segment should still be in memory
-    assert_eq!(tiny_db.time_series.get_current_values().len(), segment_size);
+    // everything should have been persisted
+    assert!(tiny_db.time_series.is_empty());
 
     println!(
         "Elapsed time for writing {} segments of size {}: {} ms",
@@ -78,6 +78,39 @@ fn stress_test() {
         few_values.as_ref().unwrap().len(),
         segment_number * segment_size,
         read_few_elapsed
+    );
+
+    // add some more values
+    let new_values_num = 50;
+    for _j in 0..new_values_num {
+        let power_vals = PowerValues {
+            power_pv: rng.gen_range(-1e3..1e3),
+            power_grid: rng.gen_range(-1e3..1e3),
+            power_used: rng.gen_range(-1e3..1e3),
+        };
+        tiny_db.insert_value_at_current_time(power_vals);
+        // sleep here is required otherwise data loss occurs because we're writing too fast
+        std::thread::sleep(Duration::from_nanos(1));
+    }
+
+    // should now be kept in memory
+    assert_eq!(tiny_db.time_series.len(), new_values_num);
+
+    // get everything once more
+    let now = Instant::now();
+    let read_data = tiny_db.get_all_values();
+    println!(
+        "Elapsed time for reading {} values: {} ms",
+        segment_number * segment_size + new_values_num,
+        now.elapsed().as_millis()
+    );
+
+    assert!(read_data.is_some(), "Found no data in time series DB!");
+
+    assert_eq!(
+        read_data.as_ref().unwrap().get_current_values().len(),
+        segment_number * segment_size + new_values_num,
+        "Fewer data points read than written!"
     );
 
     // clean up
