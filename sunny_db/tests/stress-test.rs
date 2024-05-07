@@ -64,12 +64,10 @@ fn stress_test() {
 
     let time_series_start = read_data
         .unwrap()
-        .get_unix_start_timestamp_as_millis()
+        .get_start_time()
         .unwrap();
-    let start_time = UNIX_EPOCH
-        + Duration::from_millis(time_series_start.try_into().unwrap())
-        + Duration::from_millis(80);
-    let end_time = start_time + Duration::from_millis(50);
+    let start_time = time_series_start + 80;
+    let end_time = start_time + 50;
 
     let now = Instant::now();
     let few_values = tiny_db.get_values_in_range(start_time, end_time);
@@ -86,7 +84,7 @@ fn stress_test() {
     );
 
     // clean up
-    // std::fs::remove_dir_all(&test_db_path).ok();
+    std::fs::remove_dir_all(&test_db_path).ok();
 }
 
 #[test]

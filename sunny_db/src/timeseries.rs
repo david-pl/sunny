@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
 struct TimeSeriesEntry<T> {
-    system_time: SystemTime,
+    time: u64,
     value: T,
 }
 
@@ -11,8 +11,8 @@ struct TimeSeriesEntry<T> {
 pub struct TinyTimeSeries<T> {
     init_size: usize,
     data: Vec<TimeSeriesEntry<T>>,
-    start_time: Option<SystemTime>,
-    end_time: Option<SystemTime>,
+    start_time: Option<u64>,
+    end_time: Option<u64>,
 }
 
 pub trait UnixTimestamp {
@@ -42,7 +42,7 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
         TinyTimeSeries::<T>::new(0)
     }
 
-    // getter methods for read only fields; TODO: is this idiomatic rust?
+    // getter methods for read only fields
     pub fn len(&self) -> usize {
         // TODO: should we implement the Allocator trait for this?
         self.data.len()
@@ -52,57 +52,23 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
         self.start_time.is_none() || self.data.is_empty()
     }
 
-    pub fn get_start_time(&self) -> Option<SystemTime> {
+    pub fn get_start_time(&self) -> Option<u64> {
         self.start_time
     }
 
-    pub fn get_end_time(&self) -> Option<SystemTime> {
+    pub fn get_end_time(&self) -> Option<u64> {
         self.end_time
     }
 
-    pub fn get_unix_start_timestamp_as_millis(&self) -> Option<u64> {
-        let start = self.start_time?;
-        let timestamp = start.timestamp();
-        return Some(timestamp);
-    }
-
-    pub fn get_unix_end_timestamp_as_millis(&self) -> Option<u64> {
-        let end = self.end_time?;
-        let timestamp = end.timestamp();
-        return Some(timestamp);
-    }
-
-    pub fn get_current_values(&self) -> Vec<(SystemTime, T)> {
+    pub fn get_current_values(&self) -> Vec<(u64, T)> {
         self.data
             .iter()
-            .map(|entry| (entry.system_time, entry.value))
+            .map(|entry| (entry.time, entry.value))
             .collect()
     }
 
     // private methods
-    pub fn time_in_series(&self, time: SystemTime) -> bool {
-        match self.start_time {
-            None => return false,
-            Some(start) => {
-                if time < start {
-                    return false;
-                }
-            }
-        };
-
-        match self.end_time {
-            None => return false,
-            Some(end) => {
-                if time > end {
-                    return false;
-                }
-            }
-        }
-
-        true
-    }
-
-    fn update_start_and_end(&mut self, time: SystemTime) {
+    fn update_start_and_end(&mut self, time: u64) {
         match self.start_time {
             None => self.start_time = Some(time),
             Some(start) => {
@@ -124,8 +90,8 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
 
     pub fn get_values_in_range(
         &self,
-        start_time: SystemTime,
-        end_time: SystemTime,
+        start_time: u64,
+        end_time: u64,
     ) -> Option<TinyTimeSeries<T>> {
         if self.data.is_empty() {
             return None;
@@ -147,8 +113,8 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
             return None;
         }
 
-        let new_series_start_time = data.first().map(|d| d.system_time);
-        let new_series_end_time = data.last().map(|d| d.system_time);
+        let new_series_start_time = data.first().map(|d| d.time);
+        let new_series_end_time = data.last().map(|d| d.time);
         let tts = TinyTimeSeries {
             init_size: data.len(),
             data: data,
@@ -159,59 +125,41 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
         Some(tts)
     }
 
-    // getting times
-    pub fn system_times(&self) -> Vec<SystemTime> {
-        self.data.iter().map(|entry| entry.system_time).collect()
-    }
-
-    pub fn unix_timestamps_as_millis(&self) -> Vec<u64> {
-        self.data
-            .iter()
-            .map(|entry| entry.system_time.timestamp())
-            .collect()
-    }
-
-    pub fn unix_timestamps_as_secs(&self) -> Vec<u64> {
-        self.data
-            .iter()
-            .map(|entry| entry.system_time.timestamp())
-            .collect()
-    }
-
+    // adding values to the series
     pub fn insert_value_at_current_time(&mut self, value: T) {
-        let now = SystemTime::now();
+        let now = SystemTime::now().timestamp();
         let entry = TimeSeriesEntry {
-            system_time: now,
+            time: now,
             value: value,
         };
         self.insert_entry(entry);
     }
 
-    pub fn insert_value_at_time(&mut self, time: SystemTime, value: T) {
+    pub fn insert_value_at_time(&mut self, time: u64, value: T) {
         let entry = TimeSeriesEntry {
-            system_time: time,
+            time: time,
             value: value,
         };
         self.insert_entry(entry);
     }
 
     fn insert_entry(&mut self, entry: TimeSeriesEntry<T>) {
-        let index = self.find_last_index_after_time(entry.system_time);
+        let index = self.find_last_index_after_time(entry.time);
         match index {
             Some(idx) => self.data.insert(idx, entry),
             None => self.data.push(entry),
         };
-        self.update_start_and_end(entry.system_time);
+        self.update_start_and_end(entry.time);
     }
 
-    fn find_last_index_after_time(&self, time: SystemTime) -> Option<usize> {
+    fn find_last_index_after_time(&self, time: u64) -> Option<usize> {
         if time < self.start_time? || time > self.end_time? {
             return None;
         }
 
         self.data
             .iter()
-            .rposition(|entries| entries.system_time <= time)
+            .rposition(|entries| entries.time <= time)
             .map(|idx| idx + 1)
     }
 

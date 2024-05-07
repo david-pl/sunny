@@ -194,11 +194,7 @@ async fn get_values_in_time_range(
 
     let reader = db_read_lock.read().await;
 
-    let system_start_time = UNIX_EPOCH + Duration::from_millis(start_time);
-    let system_end_time = UNIX_EPOCH + Duration::from_millis(end_time);
-
-    let read_values = reader.get_values_in_range(system_start_time, system_end_time);
-
+    let read_values = reader.get_values_in_range(start_time, end_time);
     match read_values {
         Some(vals) => {
             let json = serde_json::to_string_pretty(&vals);

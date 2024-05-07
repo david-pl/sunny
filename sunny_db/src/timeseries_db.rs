@@ -3,7 +3,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs::{self, create_dir_all, remove_file, File};
 use std::io::prelude::*;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 pub struct SunnyDB<T> {
     pub time_series: TinyTimeSeries<T>,
@@ -103,11 +103,11 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     fn export_time_series_to_file(&self) -> Result<(), std::io::Error> {
         let start = self
             .time_series
-            .get_unix_start_timestamp_as_millis()
+            .get_start_time()
             .expect("Error: tried to export time series that has no start time set!");
         let end = self
             .time_series
-            .get_unix_end_timestamp_as_millis()
+            .get_end_time()
             .expect("Error: tried to export time series that has no end time set!");
         let file_name = format!("{}-{}", start, end);
         let mut file = File::create(self.data_path.to_owned() + &file_name)?;
@@ -121,14 +121,14 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     // getting values
     pub fn get_all_values(&self) -> Option<TinyTimeSeries<T>> {
         // TODO: simplify by skipping search & everything
-        let end_time = self.time_series.get_end_time().unwrap_or(SystemTime::now());
-        self.get_values_in_range(UNIX_EPOCH, end_time)
+        let end_time = self.time_series.get_end_time().unwrap_or(SystemTime::now().timestamp());
+        self.get_values_in_range(0, end_time)
     }
 
     pub fn get_values_in_range(
         &self,
-        start_time: SystemTime,
-        end_time: SystemTime,
+        start_time: u64,
+        end_time: u64,
     ) -> Option<TinyTimeSeries<T>> {
         if end_time < start_time {
             // someone accidentally switched start & end
@@ -165,8 +165,8 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
 
     fn read_persisted_data(
         &self,
-        start_time: SystemTime,
-        end_time: SystemTime,
+        start_time: u64,
+        end_time: u64,
     ) -> Option<TinyTimeSeries<T>> {
         let mut files: Vec<fs::DirEntry> = fs::read_dir(&self.data_path)
             .expect("Couldn't read data directory!")
@@ -223,17 +223,13 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     fn find_persisted_segment_index(
         &self,
         files: &Vec<fs::DirEntry>,
-        start_time: SystemTime,
-        end_time: SystemTime,
+        start_time: u64,
+        end_time: u64,
     ) -> (Option<usize>, Option<usize>) {
         let segments: Vec<Option<(u64, u64)>> = files
             .iter()
             .map(|file| SunnyDB::<T>::parse_filename_to_times(file))
             .collect();
-
-        let start_timestamp = start_time.timestamp();
-
-        let end_timestamp = end_time.timestamp();
 
         // check if we're getting all the segments
         let first_segment = segments.iter().find(|&seg| seg.is_some());
@@ -243,26 +239,26 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
             return (None, None);
         }
 
-        if end_timestamp < first_segment.unwrap().unwrap().0 {
+        if end_time < first_segment.unwrap().unwrap().0 {
             return (None, None);
         }
 
-        let start_segment_index = if start_timestamp < first_segment.unwrap().unwrap().0 {
+        let start_segment_index = if start_time < first_segment.unwrap().unwrap().0 {
             // starting from the very beginning
             Some(0)
         } else {
             segments.iter().position(|&seg| match seg {
                 None => false,
-                Some(s) => s.0 <= start_timestamp,
+                Some(s) => s.0 <= start_time,
             })
         };
 
-        let end_segment_index = if end_timestamp > last_segment.unwrap().unwrap().1 {
+        let end_segment_index = if end_time > last_segment.unwrap().unwrap().1 {
             Some(segments.len() - 1)
         } else {
             segments.iter().position(|&seg| match seg {
                 None => false,
-                Some(s) => s.0 <= end_timestamp && end_timestamp <= s.1,
+                Some(s) => s.0 <= end_time && end_time <= s.1,
             })
         };
 
