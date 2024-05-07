@@ -75,8 +75,8 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     }
 
     pub fn insert_value_at_current_time(&mut self, value: T) {
-        self.dump_time_series_if_full();
         self.time_series.insert_value_at_current_time(value);
+        self.dump_time_series_if_full();
     }
 
     fn dump_time_series_if_full(&mut self) {
