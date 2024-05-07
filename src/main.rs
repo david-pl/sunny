@@ -4,7 +4,7 @@ use clap::Parser;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::Duration;
 use sunny_db::timeseries_db::SunnyDB;
 use tokio::signal;
 use tokio::sync::RwLock;
@@ -150,7 +150,9 @@ async fn fetch_power_values(url: &str) -> anyhow::Result<PowerValues> {
     // so, we're splitting the values in two here
 
     // the grid power value is negative if we're feeding into to the grid and positive if we're pulling from it
-    let grid_power = site_data["P_Grid"].as_f64().context("Couldn't obtain grid power from response")?;
+    let grid_power = site_data["P_Grid"]
+        .as_f64()
+        .context("Couldn't obtain grid power from response")?;
     let (power_to_grid, power_from_grid) = if grid_power < 0.0 {
         (0.0, -grid_power)
     } else {

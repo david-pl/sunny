@@ -121,15 +121,14 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     // getting values
     pub fn get_all_values(&self) -> Option<TinyTimeSeries<T>> {
         // TODO: simplify by skipping search & everything
-        let end_time = self.time_series.get_end_time().unwrap_or(SystemTime::now().timestamp());
+        let end_time = self
+            .time_series
+            .get_end_time()
+            .unwrap_or(SystemTime::now().timestamp());
         self.get_values_in_range(0, end_time)
     }
 
-    pub fn get_values_in_range(
-        &self,
-        start_time: u64,
-        end_time: u64,
-    ) -> Option<TinyTimeSeries<T>> {
+    pub fn get_values_in_range(&self, start_time: u64, end_time: u64) -> Option<TinyTimeSeries<T>> {
         if end_time < start_time {
             // someone accidentally switched start & end
             return self.get_values_in_range(end_time, start_time);
@@ -163,11 +162,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         };
     }
 
-    fn read_persisted_data(
-        &self,
-        start_time: u64,
-        end_time: u64,
-    ) -> Option<TinyTimeSeries<T>> {
+    fn read_persisted_data(&self, start_time: u64, end_time: u64) -> Option<TinyTimeSeries<T>> {
         let mut files: Vec<fs::DirEntry> = fs::read_dir(&self.data_path)
             .expect("Couldn't read data directory!")
             .flatten()

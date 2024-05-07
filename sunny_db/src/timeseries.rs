@@ -88,11 +88,7 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
         }
     }
 
-    pub fn get_values_in_range(
-        &self,
-        start_time: u64,
-        end_time: u64,
-    ) -> Option<TinyTimeSeries<T>> {
+    pub fn get_values_in_range(&self, start_time: u64, end_time: u64) -> Option<TinyTimeSeries<T>> {
         if self.data.is_empty() {
             return None;
         }

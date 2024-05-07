@@ -1,6 +1,6 @@
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use sunny_db::timeseries_db;
 
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
@@ -62,10 +62,7 @@ fn stress_test() {
         "Fewer data points read than written!"
     );
 
-    let time_series_start = read_data
-        .unwrap()
-        .get_start_time()
-        .unwrap();
+    let time_series_start = read_data.unwrap().get_start_time().unwrap();
     let start_time = time_series_start + 80;
     let end_time = start_time + 50;
 
