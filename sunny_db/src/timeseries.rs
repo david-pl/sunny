@@ -8,7 +8,7 @@ struct TimeSeriesEntry<T> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TinyTimeSeries<T> {
+pub struct TimeSeries<T> {
     init_size: usize,
     data: Vec<TimeSeriesEntry<T>>,
     start_time: Option<u64>,
@@ -27,10 +27,10 @@ impl UnixTimestamp for SystemTime {
     }
 }
 
-impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
+impl<T: Copy + Serialize + DeserializeOwned> TimeSeries<T> {
     pub fn new(init_size: usize) -> Self {
         let data = Vec::<TimeSeriesEntry<T>>::with_capacity(init_size);
-        TinyTimeSeries {
+        TimeSeries {
             init_size: init_size,
             data: data,
             start_time: None,
@@ -39,7 +39,7 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
     }
 
     pub fn empty() -> Self {
-        TinyTimeSeries::<T>::new(0)
+        TimeSeries::<T>::new(0)
     }
 
     // getter methods for read only fields
@@ -88,7 +88,7 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
         }
     }
 
-    pub fn get_values_in_range(&self, start_time: u64, end_time: u64) -> Option<TinyTimeSeries<T>> {
+    pub fn get_values_in_range(&self, start_time: u64, end_time: u64) -> Option<TimeSeries<T>> {
         if self.data.is_empty() {
             return None;
         }
@@ -111,7 +111,7 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
 
         let new_series_start_time = data.first().map(|d| d.time);
         let new_series_end_time = data.last().map(|d| d.time);
-        let tts = TinyTimeSeries {
+        let tts = TimeSeries {
             init_size: data.len(),
             data: data,
             start_time: new_series_start_time,
@@ -165,7 +165,7 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
         output
     }
 
-    pub fn from_compressed_json(compressed_json_bytes: &[u8]) -> anyhow::Result<TinyTimeSeries<T>> {
+    pub fn from_compressed_json(compressed_json_bytes: &[u8]) -> anyhow::Result<TimeSeries<T>> {
         let decompressed_json = zstd::stream::decode_all(compressed_json_bytes)?;
         let s = String::from_utf8(decompressed_json)?;
         Ok(serde_json::from_str(&s)?)
@@ -174,7 +174,7 @@ impl<T: Copy + Serialize + DeserializeOwned> TinyTimeSeries<T> {
     /// Appends one time series to another mutating the original time series
     /// **NOTE**: The timeseries to which you append *must* precede the timeseries
     /// that you are trying to append. Otherwise, this will cause a panic!
-    pub fn append(&mut self, t: &TinyTimeSeries<T>) -> &Self {
+    pub fn append(&mut self, t: &TimeSeries<T>) -> &Self {
         if t.is_empty() {
             return self;
         }

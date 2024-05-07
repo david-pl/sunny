@@ -1,4 +1,4 @@
-use crate::timeseries::{TinyTimeSeries, UnixTimestamp};
+use crate::timeseries::{TimeSeries, UnixTimestamp};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs::{self, create_dir_all, remove_file, File};
@@ -6,7 +6,7 @@ use std::io::prelude::*;
 use std::time::SystemTime;
 
 pub struct SunnyDB<T> {
-    pub time_series: TinyTimeSeries<T>,
+    pub time_series: TimeSeries<T>,
     time_series_cache_size: usize,
     data_path: String,
     /// The zstd compression level
@@ -24,7 +24,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     ) -> Self {
         let data_dir_path = Self::init_directory(dir_path);
 
-        let time_series = TinyTimeSeries::<T>::new(time_series_cache_size);
+        let time_series = TimeSeries::<T>::new(time_series_cache_size);
         SunnyDB {
             time_series: time_series,
             time_series_cache_size: time_series_cache_size,
@@ -85,7 +85,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
                 Err(e) => panic!("Error while trying to dump time series: {}", e),
                 Ok(()) => (), // TODO: log
             };
-            self.time_series = TinyTimeSeries::<T>::new(self.time_series_cache_size);
+            self.time_series = TimeSeries::<T>::new(self.time_series_cache_size);
         }
     }
 
@@ -119,7 +119,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
     }
 
     // getting values
-    pub fn get_all_values(&self) -> Option<TinyTimeSeries<T>> {
+    pub fn get_all_values(&self) -> Option<TimeSeries<T>> {
         // TODO: simplify by skipping search & everything
         let end_time = self
             .time_series
@@ -128,7 +128,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         self.get_values_in_range(0, end_time)
     }
 
-    pub fn get_values_in_range(&self, start_time: u64, end_time: u64) -> Option<TinyTimeSeries<T>> {
+    pub fn get_values_in_range(&self, start_time: u64, end_time: u64) -> Option<TimeSeries<T>> {
         if end_time < start_time {
             // someone accidentally switched start & end
             return self.get_values_in_range(end_time, start_time);
@@ -151,7 +151,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         let ts = self
             .time_series
             .get_values_in_range(start_time, end_time)
-            .unwrap_or(TinyTimeSeries::<T>::empty());
+            .unwrap_or(TimeSeries::<T>::empty());
 
         return match read_data {
             None => Some(ts),
@@ -162,7 +162,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         };
     }
 
-    fn read_persisted_data(&self, start_time: u64, end_time: u64) -> Option<TinyTimeSeries<T>> {
+    fn read_persisted_data(&self, start_time: u64, end_time: u64) -> Option<TimeSeries<T>> {
         let mut files: Vec<fs::DirEntry> = fs::read_dir(&self.data_path)
             .expect("Couldn't read data directory!")
             .flatten()
@@ -180,7 +180,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         let actual_start_index = start_index.unwrap_or(0);
         let actual_end_index = end_index.unwrap_or(files.len() - 1) + 1;
 
-        let ts: Vec<TinyTimeSeries<T>> = files[actual_start_index..actual_end_index]
+        let ts: Vec<TimeSeries<T>> = files[actual_start_index..actual_end_index]
             .into_iter()
             .map(|f| self.parse_file_to_timeseries(f))
             .flatten()
@@ -199,7 +199,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         // multiple entries
         let mut t0 = ts[0]
             .get_values_in_range(start_time, end_time)
-            .unwrap_or(TinyTimeSeries::<T>::empty());
+            .unwrap_or(TimeSeries::<T>::empty());
 
         if ts.len() > 2 {
             for t in &ts[1..(ts.len() - 1)] {
@@ -209,7 +209,7 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
 
         let t_n = ts[ts.len() - 1]
             .get_values_in_range(start_time, end_time)
-            .unwrap_or(TinyTimeSeries::<T>::empty());
+            .unwrap_or(TimeSeries::<T>::empty());
         t0.append(&t_n);
 
         Some(t0)
@@ -280,10 +280,10 @@ impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
         Some((start_timestamp, end_timestamp))
     }
 
-    fn parse_file_to_timeseries(&self, f: &fs::DirEntry) -> anyhow::Result<TinyTimeSeries<T>> {
+    fn parse_file_to_timeseries(&self, f: &fs::DirEntry) -> anyhow::Result<TimeSeries<T>> {
         let opened_file = File::open(f.path())?;
         let mut buf: Vec<u8> = vec![0; f.metadata()?.len() as usize];
         let _ = (&opened_file).read(&mut buf);
-        TinyTimeSeries::<T>::from_compressed_json(&buf)
+        TimeSeries::<T>::from_compressed_json(&buf)
     }
 }
