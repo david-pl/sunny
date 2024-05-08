@@ -1,9 +1,9 @@
+use bitcode::{Decode, Encode};
 use rand::{thread_rng, Rng};
-use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use sunny_db::timeseries_db;
 
-#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Encode, Decode, Debug)]
 struct PowerValues {
     power_pv: f64,
     power_grid: f64,
@@ -122,7 +122,7 @@ fn test_data_loss() {
     let data_loss_path = "./tests/test-data-loss";
     let mut full_db_path = data_loss_path.to_owned();
     full_db_path.push_str("/data");
-    let mut tiny_db = timeseries_db::SunnyDB::<PowerValues>::new(10, &data_loss_path, 2, 5);
+    let mut tiny_db = timeseries_db::SunnyDB::<PowerValues>::new(10, &data_loss_path, 10, 5);
 
     // write some values below loss threshold
     let mut rng = thread_rng();

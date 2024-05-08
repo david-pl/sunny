@@ -1,13 +1,13 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use bitcode::{Encode, Decode, DecodeOwned};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Encode, Decode, PartialEq, Debug)]
 struct TimeSeriesEntry<T> {
     time: u64,
     value: T,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Encode, Decode, PartialEq, Debug)]
 pub struct TimeSeries<T> {
     init_size: usize,
     data: Vec<TimeSeriesEntry<T>>,
@@ -27,7 +27,7 @@ impl UnixTimestamp for SystemTime {
     }
 }
 
-impl<T: Copy + Serialize + DeserializeOwned> TimeSeries<T> {
+impl<T: Copy + Encode + DecodeOwned> TimeSeries<T> {
     pub fn new(init_size: usize) -> Self {
         let data = Vec::<TimeSeriesEntry<T>>::with_capacity(init_size);
         TimeSeries {
@@ -160,15 +160,15 @@ impl<T: Copy + Serialize + DeserializeOwned> TimeSeries<T> {
     }
 
     pub fn to_compressed_json(&self, level: i32) -> std::io::Result<Vec<u8>> {
-        let json = serde_json::to_string(&self)?;
-        let output = zstd::stream::encode_all(json.as_bytes(), level);
+        let bytes: &[u8] = &bitcode::encode(self);
+        let output = zstd::stream::encode_all(bytes, level);
         output
     }
 
     pub fn from_compressed_json(compressed_json_bytes: &[u8]) -> anyhow::Result<TimeSeries<T>> {
-        let decompressed_json = zstd::stream::decode_all(compressed_json_bytes)?;
-        let s = String::from_utf8(decompressed_json)?;
-        Ok(serde_json::from_str(&s)?)
+        let bytes: &[u8] = &zstd::stream::decode_all(compressed_json_bytes)?;
+        let ts = bitcode::decode(bytes)?;
+        Ok(ts)
     }
 
     /// Appends one time series to another mutating the original time series

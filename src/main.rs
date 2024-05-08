@@ -1,5 +1,6 @@
 use anyhow::{self, Context};
 use axum::{self, extract::Path};
+use bitcode::{Decode, Encode};
 use clap::Parser;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -39,7 +40,7 @@ struct Args {
     loss_threshold: usize,
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Encode, Decode, PartialEq, Serialize, Deserialize, Debug)]
 struct PowerValues {
     power_pv: f64,
     power_to_grid: f64,
@@ -196,10 +197,10 @@ async fn get_values_in_time_range(
 
     let reader = db_read_lock.read().await;
 
-    let read_values = reader.get_values_in_range(start_time, end_time);
-    match read_values {
-        Some(vals) => {
-            let json = serde_json::to_string_pretty(&vals);
+    let read_timeseries = reader.get_values_in_range(start_time, end_time);
+    match read_timeseries {
+        Some(series) => {
+            let json = serde_json::to_string_pretty(&series.get_current_values());
             match json {
                 Ok(j) => header.push_str(&j),
                 Err(e) => {

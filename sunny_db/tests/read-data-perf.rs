@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
+use bitcode::{Decode, Encode};
 use sunny_db::timeseries_db;
 
-#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Encode, Decode, Debug)]
 struct PowerValues {
     power_pv: f64,
     power_grid: f64,

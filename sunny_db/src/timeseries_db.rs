@@ -1,9 +1,8 @@
 use crate::timeseries::{TimeSeries, UnixTimestamp};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::fs::{self, create_dir_all, remove_file, File};
 use std::io::prelude::*;
 use std::time::SystemTime;
+use bitcode::{DecodeOwned, Encode};
 
 pub struct SunnyDB<T> {
     pub time_series: TimeSeries<T>,
@@ -15,7 +14,7 @@ pub struct SunnyDB<T> {
     data_loss_threshold: usize,
 }
 
-impl<T: Copy + DeserializeOwned + Serialize> SunnyDB<T> {
+impl<T: Copy + DecodeOwned + Encode> SunnyDB<T> {
     pub fn new(
         time_series_cache_size: usize,
         dir_path: &str,
