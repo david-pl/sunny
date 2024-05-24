@@ -1,15 +1,24 @@
 use anyhow::{self, Context};
-use axum::{self, extract::Path};
+use axum::{
+    self,
+    extract::Path,
+    response::{IntoResponse, Response},
+    http::StatusCode
+};
 use bitcode::{Decode, Encode};
 use clap::Parser;
 use reqwest;
 use serde::{Deserialize, Serialize};
+use sunny_db::timeseries::TimeSeries;
 use std::sync::Arc;
 use std::time::Duration;
+use std::ops::{Add, Sub, Mul, Div};
 use sunny_db::timeseries_db::SunnyDB;
+use sunny_db::statistics::*;
 use tokio::signal;
 use tokio::sync::RwLock;
 use tokio::time::interval;
+
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -48,6 +57,59 @@ struct PowerValues {
     power_used: f64,
 }
 
+// traits required to do statistics
+impl Add for PowerValues {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            power_pv: self.power_pv + other.power_pv,
+            power_to_grid: self.power_to_grid + other.power_to_grid,
+            power_from_grid: self.power_from_grid + other.power_from_grid,
+            power_used: self.power_used + other.power_used,
+        }
+    }
+}
+
+impl Sub for PowerValues {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        Self {
+            power_pv: self.power_pv - other.power_pv,
+            power_to_grid: self.power_to_grid - other.power_to_grid,
+            power_from_grid: self.power_from_grid - other.power_from_grid,
+            power_used: self.power_used - other.power_used,
+        }
+    }
+}
+
+impl Mul<f64> for PowerValues {
+    type Output = Self;
+
+    fn mul(self, rhs: f64) -> Self {
+        Self {
+            power_pv: self.power_pv * rhs,
+            power_to_grid: self.power_to_grid * rhs,
+            power_from_grid: self.power_from_grid * rhs,
+            power_used: self.power_used * rhs
+        }
+    }
+}
+
+impl Div<f64> for PowerValues {
+    type Output = Self;
+
+    fn div(self, rhs: f64) -> Self {
+        Self {
+            power_pv: self.power_pv / rhs,
+            power_to_grid: self.power_to_grid / rhs,
+            power_from_grid: self.power_from_grid / rhs,
+            power_used: self.power_used / rhs
+        }
+    }
+}
+
 /// Simple wrapper around Arc<RwLock> to make it read-only
 /// see also: https://stackoverflow.com/questions/70470631/getting-a-read-only-version-of-an-arcrwlockfoo
 #[derive(Clone)]
@@ -65,6 +127,31 @@ impl DatabaseReadLock {
     }
 }
 
+// Error handling -- see https://github.com/tokio-rs/axum/blob/main/examples/anyhow-error-response/src/main.rs
+struct AppError(anyhow::Error);
+
+// Tell axum how to convert `AppError` into a response.
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", self.0),
+        )
+            .into_response()
+    }
+}
+
+// This enables using `?` on functions that return `Result<_, anyhow::Error>` to turn them into
+// `Result<_, AppError>`. That way you don't need to do that manually.
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
@@ -77,6 +164,7 @@ async fn main() {
     let db_shutdown_lock = Arc::clone(&db_write_lock);
     let db_read_lock_1 = DatabaseReadLock::new(Arc::clone(&db_write_lock));
     let db_read_lock_2 = db_read_lock_1.clone();
+    let db_read_lock_3 = db_read_lock_1.clone();
 
     println!("Spawning database writer...");
     let granularity = Duration::from_secs(args.granularity);
@@ -102,8 +190,13 @@ async fn main() {
             axum::routing::get(move |Path((start_time, end_time)): Path<(u64, u64)>| {
                 get_values_in_time_range(db_read_lock_2, Path((start_time, end_time)))
             }),
+        )
+        .route(
+            "/values-with-stats/:start_time/:end_time",
+            axum::routing::get(move |Path((start_time, end_time)): Path<(u64, u64)>| {
+                get_values_in_time_range_with_statistics(db_read_lock_3, Path((start_time, end_time)))
+            })
         );
-    // .with_state(db_read_lock);
 
     // run our app with hyper, listening globally on port
     // very useful: https://github.com/tokio-rs/axum/tree/main/examples
@@ -191,28 +284,76 @@ async fn landing_page(db_read_lock: DatabaseReadLock) -> String {
 async fn get_values_in_time_range(
     db_read_lock: DatabaseReadLock,
     Path((start_time, end_time)): Path<(u64, u64)>,
-) -> String {
-    let mut header =
-        format!("Reading values in range {} to {}\n\n", start_time, end_time).to_owned();
-
+) -> Result<String, AppError> {
     let reader = db_read_lock.read().await;
 
     let read_timeseries = reader.get_values_in_range(start_time, end_time);
     match read_timeseries {
-        Some(series) => {
-            let json = serde_json::to_string_pretty(&series.get_current_values());
-            match json {
-                Ok(j) => header.push_str(&j),
-                Err(e) => {
-                    println!("Error creating json out of values: {}", e);
-                    header.push_str(&(format!("Error creating json out of values: {}", e)));
-                }
-            };
-        }
-        None => header.push_str("No data found"),
+        Some(series) => Ok(serde_json::to_string_pretty(&series.get_current_values())?),
+        None => Ok(String::from("{ }"))
+    }
+}
+
+#[derive(Serialize)]
+struct ValuesAndStats {
+    values: Vec<(u64, PowerValues)>,
+    average: Option<PowerValues>,
+    maxes: Option<PowerValues>,
+    energy: Option<PowerValues>,
+}
+
+async fn get_values_in_time_range_with_statistics(
+    db_read_lock: DatabaseReadLock,
+    Path((start_time, end_time)): Path<(u64, u64)>
+) -> Result<String, AppError> {
+    let reader = db_read_lock.read().await;
+    let read_timeseries = reader.get_values_in_range(start_time, end_time);
+
+    if read_timeseries.is_none() {
+        return Ok(String::from("{ }"))
+    }
+
+    let timeseries = read_timeseries.unwrap();
+    let energy = timeseries.integrate();
+    let avg = energy.map(|e| e / (timeseries.get_end_time().unwrap() - timeseries.get_start_time().unwrap()) as f64);
+    let maxes = get_max_powervalues_from_series(&timeseries);
+
+    let response_data = ValuesAndStats {
+        values: timeseries.get_current_values(),
+        average: avg,
+        maxes: maxes,
+        energy: energy
     };
 
-    header
+    let json = serde_json::to_string(&response_data);
+    Ok(json?)
+}
+
+fn get_max_powervalues_from_series(timeseries: &TimeSeries<PowerValues>) -> Option<PowerValues> {
+    let pv_max = timeseries.max_by(|a, b| {
+        a.power_pv.partial_cmp(&b.power_pv).unwrap()
+    })?
+    .power_pv;
+    let grid_max = timeseries.max_by(|a, b| {
+        a.power_from_grid.partial_cmp(&b.power_from_grid).unwrap()
+    })?
+    .power_from_grid;
+    let into_grid_max = timeseries.max_by(|a, b| {
+        a.power_to_grid.partial_cmp(&b.power_to_grid).unwrap()
+    })?
+    .power_to_grid;
+    let used_max = timeseries.max_by(|a, b| {
+        a.power_used.partial_cmp(&b.power_used).unwrap()
+    })?
+    .power_used;
+
+    let pv = PowerValues {
+        power_pv: pv_max,
+        power_to_grid: into_grid_max,
+        power_from_grid: grid_max,
+        power_used: used_max
+    };
+    Some(pv)
 }
 
 async fn shutdown_signal(db_shutdown_lock: Arc<RwLock<SunnyDB<PowerValues>>>) {
