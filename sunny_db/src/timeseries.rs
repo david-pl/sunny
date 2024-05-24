@@ -67,6 +67,13 @@ impl<T: Copy + Encode + DecodeOwned> TimeSeries<T> {
             .collect()
     }
 
+    pub fn get_current_values_without_time(&self) -> Vec<T> {
+        self.data
+            .iter()
+            .map(|entry| entry.value)
+            .collect()
+    }
+
     // private methods
     fn update_start_and_end(&mut self, time: u64) {
         match self.start_time {
