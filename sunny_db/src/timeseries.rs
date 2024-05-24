@@ -1,4 +1,4 @@
-use bitcode::{Encode, Decode, DecodeOwned};
+use bitcode::{Decode, DecodeOwned, Encode};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Copy, Clone, Encode, Decode, PartialEq, Debug)]
@@ -68,10 +68,7 @@ impl<T: Copy + Encode + DecodeOwned> TimeSeries<T> {
     }
 
     pub fn get_current_values_without_time(&self) -> Vec<T> {
-        self.data
-            .iter()
-            .map(|entry| entry.value)
-            .collect()
+        self.data.iter().map(|entry| entry.value).collect()
     }
 
     // private methods

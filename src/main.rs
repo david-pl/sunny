@@ -2,23 +2,22 @@ use anyhow::{self, Context};
 use axum::{
     self,
     extract::Path,
+    http::StatusCode,
     response::{IntoResponse, Response},
-    http::StatusCode
 };
 use bitcode::{Decode, Encode};
 use clap::Parser;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use sunny_db::timeseries::TimeSeries;
+use std::ops::{Add, Div, Mul, Sub};
 use std::sync::Arc;
 use std::time::Duration;
-use std::ops::{Add, Sub, Mul, Div};
-use sunny_db::timeseries_db::SunnyDB;
 use sunny_db::statistics::*;
+use sunny_db::timeseries::TimeSeries;
+use sunny_db::timeseries_db::SunnyDB;
 use tokio::signal;
 use tokio::sync::RwLock;
 use tokio::time::interval;
-
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -92,7 +91,7 @@ impl Mul<f64> for PowerValues {
             power_pv: self.power_pv * rhs,
             power_to_grid: self.power_to_grid * rhs,
             power_from_grid: self.power_from_grid * rhs,
-            power_used: self.power_used * rhs
+            power_used: self.power_used * rhs,
         }
     }
 }
@@ -105,7 +104,7 @@ impl Div<f64> for PowerValues {
             power_pv: self.power_pv / rhs,
             power_to_grid: self.power_to_grid / rhs,
             power_from_grid: self.power_from_grid / rhs,
-            power_used: self.power_used / rhs
+            power_used: self.power_used / rhs,
         }
     }
 }
@@ -194,8 +193,11 @@ async fn main() {
         .route(
             "/values-with-stats/:start_time/:end_time",
             axum::routing::get(move |Path((start_time, end_time)): Path<(u64, u64)>| {
-                get_values_in_time_range_with_statistics(db_read_lock_3, Path((start_time, end_time)))
-            })
+                get_values_in_time_range_with_statistics(
+                    db_read_lock_3,
+                    Path((start_time, end_time)),
+                )
+            }),
         );
 
     // run our app with hyper, listening globally on port
@@ -290,7 +292,7 @@ async fn get_values_in_time_range(
     let read_timeseries = reader.get_values_in_range(start_time, end_time);
     match read_timeseries {
         Some(series) => Ok(serde_json::to_string_pretty(&series.get_current_values())?),
-        None => Ok(String::from("{ }"))
+        None => Ok(String::from("{ }")),
     }
 }
 
@@ -304,13 +306,13 @@ struct ValuesAndStats {
 
 async fn get_values_in_time_range_with_statistics(
     db_read_lock: DatabaseReadLock,
-    Path((start_time, end_time)): Path<(u64, u64)>
+    Path((start_time, end_time)): Path<(u64, u64)>,
 ) -> Result<String, AppError> {
     let reader = db_read_lock.read().await;
     let read_timeseries = reader.get_values_in_range(start_time, end_time);
 
     if read_timeseries.is_none() {
-        return Ok(String::from("{ }"))
+        return Ok(String::from("{ }"));
     }
 
     let timeseries = read_timeseries.unwrap();
@@ -319,14 +321,16 @@ async fn get_values_in_time_range_with_statistics(
     let integral = timeseries.integrate();
     let energy_joule = integral.map(|e| e * 1e-3);
     let energy_kwh = energy_joule.map(|e| e * 1e-3 / 3600.0);
-    let avg = integral.map(|e| e / (timeseries.get_end_time().unwrap() - timeseries.get_start_time().unwrap()) as f64);
+    let avg = integral.map(|e| {
+        e / (timeseries.get_end_time().unwrap() - timeseries.get_start_time().unwrap()) as f64
+    });
     let maxes = get_max_powervalues_from_series(&timeseries);
 
     let response_data = ValuesAndStats {
         values: timeseries.get_current_values(),
         average: avg,
         maxes: maxes,
-        energy_kwh: energy_kwh
+        energy_kwh: energy_kwh,
     };
 
     let json = serde_json::to_string(&response_data);
@@ -334,28 +338,24 @@ async fn get_values_in_time_range_with_statistics(
 }
 
 fn get_max_powervalues_from_series(timeseries: &TimeSeries<PowerValues>) -> Option<PowerValues> {
-    let pv_max = timeseries.max_by(|a, b| {
-        a.power_pv.partial_cmp(&b.power_pv).unwrap()
-    })?
-    .power_pv;
-    let grid_max = timeseries.max_by(|a, b| {
-        a.power_from_grid.partial_cmp(&b.power_from_grid).unwrap()
-    })?
-    .power_from_grid;
-    let into_grid_max = timeseries.max_by(|a, b| {
-        a.power_to_grid.partial_cmp(&b.power_to_grid).unwrap()
-    })?
-    .power_to_grid;
-    let used_max = timeseries.max_by(|a, b| {
-        a.power_used.partial_cmp(&b.power_used).unwrap()
-    })?
-    .power_used;
+    let pv_max = timeseries
+        .max_by(|a, b| a.power_pv.partial_cmp(&b.power_pv).unwrap())?
+        .power_pv;
+    let grid_max = timeseries
+        .max_by(|a, b| a.power_from_grid.partial_cmp(&b.power_from_grid).unwrap())?
+        .power_from_grid;
+    let into_grid_max = timeseries
+        .max_by(|a, b| a.power_to_grid.partial_cmp(&b.power_to_grid).unwrap())?
+        .power_to_grid;
+    let used_max = timeseries
+        .max_by(|a, b| a.power_used.partial_cmp(&b.power_used).unwrap())?
+        .power_used;
 
     let pv = PowerValues {
         power_pv: pv_max,
         power_to_grid: into_grid_max,
         power_from_grid: grid_max,
-        power_used: used_max
+        power_used: used_max,
     };
     Some(pv)
 }

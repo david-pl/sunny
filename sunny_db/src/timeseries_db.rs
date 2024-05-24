@@ -1,8 +1,8 @@
 use crate::timeseries::{TimeSeries, UnixTimestamp};
+use bitcode::{DecodeOwned, Encode};
 use std::fs::{self, create_dir_all, remove_file, File};
 use std::io::prelude::*;
 use std::time::SystemTime;
-use bitcode::{DecodeOwned, Encode};
 
 pub struct SunnyDB<T> {
     pub time_series: TimeSeries<T>,
