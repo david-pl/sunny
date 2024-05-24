@@ -1,0 +1,4 @@
+FROM rust:bullseye
+
+RUN rustup target add armv7-unknown-linux-gnueabihf
+RUN apt-get update && apt-get upgrade -y && apt-get install -y gcc-arm-linux-gnueabihf
