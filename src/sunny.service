@@ -1,0 +1,8 @@
+[Unit]
+Description=Sunny
+
+[Service]
+ExecStart=/home/david/sunny/sunny -g 120 --db-path /home/david/sunny/db --url 192.168.178.35 --segment-size 200 --loss-threshold 5
+
+[Install]
+WantedBy=multi-user.target
