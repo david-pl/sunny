@@ -299,7 +299,7 @@ struct ValuesAndStats {
     values: Vec<(u64, PowerValues)>,
     average: Option<PowerValues>,
     maxes: Option<PowerValues>,
-    energy: Option<PowerValues>,
+    energy_kwh: Option<PowerValues>,
 }
 
 async fn get_values_in_time_range_with_statistics(
@@ -314,15 +314,19 @@ async fn get_values_in_time_range_with_statistics(
     }
 
     let timeseries = read_timeseries.unwrap();
-    let energy = timeseries.integrate();
-    let avg = energy.map(|e| e / (timeseries.get_end_time().unwrap() - timeseries.get_start_time().unwrap()) as f64);
+
+    // time is in ms so the integral over the series comes out in units of W*ms = mJ
+    let integral = timeseries.integrate();
+    let energy_joule = integral.map(|e| e * 1e-3);
+    let energy_kwh = energy_joule.map(|e| e * 1e-3 / 3600.0);
+    let avg = integral.map(|e| e / (timeseries.get_end_time().unwrap() - timeseries.get_start_time().unwrap()) as f64);
     let maxes = get_max_powervalues_from_series(&timeseries);
 
     let response_data = ValuesAndStats {
         values: timeseries.get_current_values(),
         average: avg,
         maxes: maxes,
-        energy: energy
+        energy_kwh: energy_kwh
     };
 
     let json = serde_json::to_string(&response_data);

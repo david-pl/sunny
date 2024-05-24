@@ -24,14 +24,14 @@ where
         let n = self.len();
         let entries = self.get_current_values();
 
-        let (t_n, f_n) = entries[n - 1];
         let (t_0, f_0) = entries[0];
-        let mut s = (f_n + f_0) * ((t_n - t_0) as f64);
+        let (t_1, f_1) = entries[1];
+        let mut s = (f_1 + f_0) * ((t_1 - t_0) as f64);
 
-        for i in 0..(n - 1) {
-            let (t_i, val_i) = entries[i];
-            let (t_ip1, val_ip1) = entries[i + 1];
-            s = s + (val_i * (t_ip1 as f64) - val_ip1 * (t_i as f64));
+        for i in 1..(n - 1) {
+            let (t_i, f_i) = entries[i];
+            let (t_ip1, f_ip1) = entries[i + 1];
+            s = s + (f_ip1 + f_i) * ((t_ip1 - t_i) as f64);
         }
 
         Some(s * 0.5)
@@ -116,7 +116,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_integral() -> () {
+    fn test_statistics() -> () {
         let times: Vec<u64> = vec![0, 10, 20, 30, 40];
 
         // simplest case: linear with slope 1
@@ -125,13 +125,13 @@ mod tests {
             ts.insert_value_at_time(times[i], i as f64);
         }
         let integral = ts.integrate().unwrap();
-        assert_eq!(integral, 80.0);
+        assert_eq!(integral, ((times[times.len() - 1] - times[0]) as f64) * ts.get_current_values().last().unwrap().1 * 0.5);
 
         let m = ts.max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
         assert_eq!(m, (times.len() - 1) as f64);
 
-        // linear with slope != 1
-        let times: Vec<u64> = (0..100).collect();
+        // linear with slope != 1 and offset != 0
+        let times: Vec<u64> = (2..100).collect();
         let mut ts = TimeSeries::<f64>::new(times.len());
         let k = 0.23;
         for i in 0..times.len() {
@@ -139,7 +139,7 @@ mod tests {
         }
 
         let integral = ts.integrate().unwrap();
-        let d = integral - (ts.get_current_values().last().unwrap().1 * times[times.len() - 1] as f64) / 2.0;
+        let d = integral - ((ts.get_current_values().last().unwrap().1 + ts.get_current_values().first().unwrap().1) * ((times[times.len() - 1] - times[0]) as f64)) / 2.0;
         let d_abs = if d < 0.0 {
             -d
         } else {
@@ -148,7 +148,8 @@ mod tests {
         assert!(d_abs < 0.0001);
 
 
-        // non-linear case
+        // non-linear case with offset == 0
+        let times: Vec<u64> = (0..100).collect();
         fn f_nl(x: f64) -> f64 {
             2.0*x - x*x
         }
