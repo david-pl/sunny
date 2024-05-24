@@ -155,9 +155,9 @@ async fn fetch_power_values(url: &str) -> anyhow::Result<PowerValues> {
         .as_f64()
         .context("Couldn't obtain grid power from response")?;
     let (power_to_grid, power_from_grid) = if grid_power < 0.0 {
-        (0.0, -grid_power)
+        (-grid_power, 0.0)
     } else {
-        (grid_power, 0.0)
+        (0.0, grid_power)
     };
 
     // power load can only be negative, but still, let's work with positives only
