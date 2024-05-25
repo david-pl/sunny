@@ -2,6 +2,7 @@ use anyhow::{self, Context};
 use axum::{
     self,
     extract::Path,
+    http::Method,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -18,6 +19,7 @@ use sunny_db::timeseries_db::SunnyDB;
 use tokio::signal;
 use tokio::sync::RwLock;
 use tokio::time::interval;
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -177,6 +179,11 @@ async fn main() {
     println!("Initializing server...");
     tracing_subscriber::fmt::init();
 
+    // cors layer
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET])
+        .allow_origin(Any);
+
     // build our application with a route
     let app = axum::Router::new()
         // `GET /` goes to `root`
@@ -184,12 +191,14 @@ async fn main() {
             "/",
             axum::routing::get(move || landing_page(db_read_lock_1)),
         )
+        .layer(cors.clone())
         .route(
             "/values/:start_time/:end_time",
             axum::routing::get(move |Path((start_time, end_time)): Path<(u64, u64)>| {
                 get_values_in_time_range(db_read_lock_2, Path((start_time, end_time)))
             }),
         )
+        .layer(cors.clone())
         .route(
             "/values-with-stats/:start_time/:end_time",
             axum::routing::get(move |Path((start_time, end_time)): Path<(u64, u64)>| {
@@ -198,7 +207,8 @@ async fn main() {
                     Path((start_time, end_time)),
                 )
             }),
-        );
+        )
+        .layer(cors.clone());
 
     // run our app with hyper, listening globally on port
     // very useful: https://github.com/tokio-rs/axum/tree/main/examples
