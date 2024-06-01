@@ -2,6 +2,7 @@ use crate::timeseries::{TimeSeries, UnixTimestamp};
 use bitcode::{DecodeOwned, Encode};
 use std::fs::{self, create_dir_all, remove_file, File};
 use std::io::prelude::*;
+use std::path::Path;
 use std::time::SystemTime;
 
 pub struct SunnyDB<T> {
@@ -167,8 +168,15 @@ impl<T: Copy + DecodeOwned + Encode> SunnyDB<T> {
             .flatten()
             .collect();
         files.sort_by(|f1, f2| f1.path().cmp(&(f2.path())));
+
+        let segments: Vec<(u64, u64)> = files
+            .iter()
+            .map(|file| SunnyDB::<T>::parse_filename_to_times(file))
+            .flatten()
+            .collect();
+
         let (start_index, end_index) =
-            self.find_persisted_segment_index(&files, start_time, end_time);
+            self.find_persisted_segment_index(&segments, start_time, end_time);
 
         if start_index.is_none() && end_index.is_none() {
             // no data found
@@ -179,9 +187,9 @@ impl<T: Copy + DecodeOwned + Encode> SunnyDB<T> {
         let actual_start_index = start_index.unwrap_or(0);
         let actual_end_index = end_index.unwrap_or(files.len() - 1) + 1;
 
-        let ts: Vec<TimeSeries<T>> = files[actual_start_index..actual_end_index]
+        let ts: Vec<TimeSeries<T>> = segments[actual_start_index..actual_end_index]
             .into_iter()
-            .map(|f| self.parse_file_to_timeseries(f))
+            .map(|seg| self.parse_segment_to_timeseries(seg))
             .flatten()
             .collect();
 
@@ -216,44 +224,64 @@ impl<T: Copy + DecodeOwned + Encode> SunnyDB<T> {
 
     fn find_persisted_segment_index(
         &self,
-        files: &Vec<fs::DirEntry>,
+        segments: &Vec<(u64,u64)>,
         start_time: u64,
         end_time: u64,
     ) -> (Option<usize>, Option<usize>) {
-        let segments: Vec<Option<(u64, u64)>> = files
-            .iter()
-            .map(|file| SunnyDB::<T>::parse_filename_to_times(file))
-            .collect();
+
 
         // check if we're getting all the segments
-        let first_segment = segments.iter().find(|&seg| seg.is_some());
-        let last_segment = segments.iter().rev().find(|&seg| seg.is_some());
+        let first_segment = segments.first();
+        let last_segment = segments.last();
         if first_segment.is_none() && last_segment.is_none() {
             // no persisted data
             return (None, None);
         }
 
-        if end_time < first_segment.unwrap().unwrap().0 {
+        if end_time < first_segment.unwrap().0 {
             return (None, None);
         }
-
-        let start_segment_index = if start_time < first_segment.unwrap().unwrap().0 {
+        
+        let start_segment_index = if start_time < first_segment.unwrap().0 {
             // starting from the very beginning
             Some(0)
         } else {
-            segments.iter().position(|&seg| match seg {
-                None => false,
-                Some(s) => s.0 <= start_time,
-            })
+            // we need to check two consecutive segments here in order to cover times that may be in between segments
+            let index = segments
+                .iter()
+                .zip(segments.iter().skip(1))
+                .position(|(seg1, seg2)| seg1.0 <= start_time && start_time <= seg2.1);
+            match index {
+                None => None,
+                Some(idx) => {
+                    if segments[idx].1 < start_time {
+                        // after the first segment, so we need to shift the index
+                        Some(idx + 1)
+                    } else {
+                        Some(idx)
+                    }
+                }
+            }
         };
 
-        let end_segment_index = if end_time > last_segment.unwrap().unwrap().1 {
+        let end_segment_index = if end_time > last_segment.unwrap().1 {
             Some(segments.len() - 1)
         } else {
-            segments.iter().position(|&seg| match seg {
-                None => false,
-                Some(s) => s.0 <= end_time && end_time <= s.1,
-            })
+            let index = segments
+                .iter()
+                .zip(segments.iter().skip(1))
+                .position(|(seg1, seg2)| seg1.0 <= end_time && end_time <= seg2.1);
+            match index {
+                None => None,
+                Some(idx) => {
+                    if segments[idx].1 < end_time {
+                        // after the first segment, so we need to shift the index
+                        Some(idx + 1)
+                    } else {
+                        Some(idx)
+                    }
+                }
+            }
         };
 
         (start_segment_index, end_segment_index)
@@ -279,9 +307,12 @@ impl<T: Copy + DecodeOwned + Encode> SunnyDB<T> {
         Some((start_timestamp, end_timestamp))
     }
 
-    fn parse_file_to_timeseries(&self, f: &fs::DirEntry) -> anyhow::Result<TimeSeries<T>> {
-        let opened_file = File::open(f.path())?;
-        let mut buf: Vec<u8> = vec![0; f.metadata()?.len() as usize];
+    fn parse_segment_to_timeseries(&self, segment: &(u64, u64)) -> anyhow::Result<TimeSeries<T>> {
+        let file_name = format!("{}-{}", segment.0, segment.1);
+        let path = Path::new(&self.data_path);
+        let path = path.join(file_name);
+        let opened_file = File::open(path)?;
+        let mut buf: Vec<u8> = vec![0; opened_file.metadata()?.len() as usize];
         let _ = (&opened_file).read(&mut buf);
         TimeSeries::<T>::from_compressed_json(&buf)
     }
