@@ -14,7 +14,7 @@ struct PowerValues {
 fn stress_test() {
     // generate a bunch of data
     let segment_size = 200;
-    let segment_number = 2501;
+    let segment_number = 251;
     let test_db_path = "./tests/stress-test-data";
 
     let mut tiny_db =

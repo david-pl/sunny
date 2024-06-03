@@ -238,7 +238,7 @@ impl<T: Copy + DecodeOwned + Encode> SunnyDB<T> {
             return (None, None);
         }
 
-        if end_time < first_segment.unwrap().0 {
+        if end_time < first_segment.unwrap().0 || start_time > last_segment.unwrap().1 {
             return (None, None);
         }
         
@@ -247,41 +247,21 @@ impl<T: Copy + DecodeOwned + Encode> SunnyDB<T> {
             Some(0)
         } else {
             // we need to check two consecutive segments here in order to cover times that may be in between segments
-            let index = segments
+            segments
                 .iter()
                 .zip(segments.iter().skip(1))
-                .position(|(seg1, seg2)| seg1.0 <= start_time && start_time <= seg2.1);
-            match index {
-                None => None,
-                Some(idx) => {
-                    if segments[idx].1 < start_time {
-                        // after the first segment, so we need to shift the index
-                        Some(idx + 1)
-                    } else {
-                        Some(idx)
-                    }
-                }
-            }
+                .position(|(seg1, seg2)| seg1.1 <= start_time && start_time <= seg2.1)
+                .map(|i| i + 1)
         };
 
         let end_segment_index = if end_time > last_segment.unwrap().1 {
             Some(segments.len() - 1)
         } else {
-            let index = segments
+            segments
                 .iter()
                 .zip(segments.iter().skip(1))
-                .position(|(seg1, seg2)| seg1.0 <= end_time && end_time <= seg2.1);
-            match index {
-                None => None,
-                Some(idx) => {
-                    if segments[idx].1 < end_time {
-                        // after the first segment, so we need to shift the index
-                        Some(idx + 1)
-                    } else {
-                        Some(idx)
-                    }
-                }
-            }
+                .position(|(seg1, seg2)| seg1.1 <= end_time && end_time <= seg2.1)
+                .map(|i| i + 1)
         };
 
         (start_segment_index, end_segment_index)
