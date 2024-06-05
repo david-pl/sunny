@@ -2,3 +2,4 @@
 /db-test
 perf.data*
 flamegraph.svg
+local_build

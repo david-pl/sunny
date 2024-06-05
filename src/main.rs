@@ -19,7 +19,8 @@ use sunny_db::timeseries_db::SunnyDB;
 use tokio::signal;
 use tokio::sync::RwLock;
 use tokio::time::interval;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::{cors::{Any, CorsLayer}, services::ServeDir};
+use tower_http::services::ServeFile;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -187,9 +188,13 @@ async fn main() {
     // build our application with a route
     let app = axum::Router::new()
         // `GET /` goes to `root`
-        .route(
+        .route_service(
             "/",
-            axum::routing::get(move || landing_page(db_read_lock_1)),
+            ServeFile::new("./index.html"),
+        )
+        .layer(cors.clone())
+        .nest_service("/assets",
+            ServeDir::new("./assets/")
         )
         .layer(cors.clone())
         .route(
@@ -281,16 +286,6 @@ async fn fetch_power_values(url: &str) -> anyhow::Result<PowerValues> {
     };
 
     Ok(power_values)
-}
-
-async fn landing_page(db_read_lock: DatabaseReadLock) -> String {
-    let mut header = "Hello from Sunny! The values currently being collected are shown below (refresh for update):\n\n".to_owned();
-
-    let reader = db_read_lock.read().await;
-    let current_values = reader.time_series.get_current_values();
-
-    header.push_str(&(serde_json::to_string_pretty(&current_values).unwrap_or("".to_string())));
-    header
 }
 
 async fn get_values_in_time_range(

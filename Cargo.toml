@@ -15,6 +15,6 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.116"
 sunny_db = { version = "0.1.0", path = "sunny_db" }
 tokio = { version = "1.37.0", features = ["sync", "macros", "rt-multi-thread", "signal"] }
-tower-http = { version = "0.5.2", features = ["cors"] }
+tower-http = { version = "0.5.2", features = ["cors", "fs"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
