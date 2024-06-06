@@ -12,10 +12,11 @@ import { LineChart } from '@mui/x-charts/LineChart';
 import Stack from '@mui/material/Stack';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers';
-// import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-// import { renderTimeViewClock } from '@mui/x-date-pickers/timeViewRenderers';
 import Chip from '@mui/material/Chip';
+import Card from '@mui/material/Card';
+import { CardContent } from '@mui/material';
+import Typography from '@mui/material/Typography';
 
 import 'dayjs/locale/de';
 import dayjs from 'dayjs';
@@ -29,9 +30,29 @@ const queryClient = new QueryClient()
 const colorPV = "#F4840B";
 const colorFromGrid = "#FD5F3D";
 const colorToGrid = "#9EDD61";
-const colorPowerUsed = "#cdd0dc"; // TODO:
+const colorPowerUsed = "#cdd0dc";
 
 function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <>
+        <div>
+          <img src={sunnyLogo} className="logo" alt="Sunny logo" height="200"/>
+        </div>
+        <h2>Welcome to Sunny!</h2>
+
+      <MainBody />
+
+      </>
+    </QueryClientProvider>
+  )
+
+}
+
+export default App
+
+
+function MainBody() {
   const now = dayjs();
   let startOfToday = dayjs().startOf('day');
 
@@ -42,58 +63,31 @@ function App() {
     }
   )
 
-  return (
-    <QueryClientProvider client={queryClient}>
-    <>
-      <div>
-        <img src={sunnyLogo} className="logo" alt="Sunny logo" />
-      </div>
-      <h1>Welcome to Sunny!</h1>
+  const queryClient = useQueryClient()
+  const query = useQuery({ queryKey: ['powerValuesWithStats', timeRange], queryFn: () => fetchDataAndStats(timeRange) })
 
-      <Stack spacing={4}>
-      {/* <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
-        <div className='row' style={{display: 'flex', justifyContent: 'space-around'}}>
-        <DateTimePicker
-          label="Start"
-          viewRenderers={{
-            hours: renderTimeViewClock,
-            minutes: renderTimeViewClock,
-            seconds: renderTimeViewClock,
-          }}
-          onChange={
-            (value, context) => {
-              if (value !== null) {
-                setTimeRange({
-                  start: value.unix() * 1000,
-                  end: timeRange.end
-                })
-              }
-            }
-          }
-        />
-        <DateTimePicker
-          label="End"
-          viewRenderers={{
-            hours: renderTimeViewClock,
-            minutes: renderTimeViewClock,
-            seconds: renderTimeViewClock,
-          }}
-          onChange={
-            (value, context) => {
-              if (value !== null) {
-                setTimeRange({
-                  start: timeRange.start,
-                  end: value.unix() * 1000
-                })
-              }
-            }
-          }
-        />
-        </div>
-    </LocalizationProvider> */}
+  if (query.isError) {
+    return (
+      <div>Error fetching data.</div>
+    )
+  } else if (query.isPending) {
+    return (
+      <div>Loading data...</div>
+    )
+  } else if (query.isSuccess) {
+
+  // query was successful
+  let data = query.data;
+  let values = data.values;
+  let currentValues = values[values.length - 1][1];
+  let energyValues = data.energy_kwh;
+  let maxes = data.maxes;
+
+  return (
+    <Stack spacing={4}>
     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
     <div className='row' style={{display: 'flex', justifyContent: 'space-around'}}>
-    <DatePicker label="Start"
+    <DatePicker label="Start" defaultValue={ startOfToday }
       onChange={
         (value, context) => {
           if (value === null) return
@@ -105,7 +99,7 @@ function App() {
         }
       }
       />
-      <DatePicker label="End"
+      <DatePicker label="End" defaultValue={ now }
       onChange={
         (value, context) => {
           if (value === null) return
@@ -120,25 +114,26 @@ function App() {
     </div>
     </LocalizationProvider>
 
-      <PowerValueChart
-        timeRange={ timeRange }
-      />
+    <PowerValueChart
+      values={ values }
+    />
 
+    <Stack spacing={5}>
       <CurrentPowerValues
-        timeRange={ timeRange }
+        currentValues={ currentValues }
       />
+      <EnergyValues
+        currentValues={ energyValues }
+      />
+      <MaxPowerValues
+        currentValues={ maxes }
+      />
+    </Stack>
 
-      </Stack>
-
-    </>
-    </QueryClientProvider>
-  )
-
-  // TODO: statistics & energy
+  </Stack>
+  );
 }
-
-export default App
-
+}
 
 function fetchDataAndStats(timeRange: { start: number, end: number }) {
   let url = `http://0.0.0.0:3000/values-with-stats/${timeRange.start}/${timeRange.end}`
@@ -149,46 +144,83 @@ function fetchDataAndStats(timeRange: { start: number, end: number }) {
     })
 }
 
-function CurrentPowerValues({ timeRange }: { timeRange: {start: number, end: number } }) {
-  const queryClient = useQueryClient()
-  // TODO: pull out the query and pass in data
-  const query = useQuery({ queryKey: ['powerValuesWithStats', timeRange], queryFn: () => fetchDataAndStats(timeRange) })
-
-  if (query.isError) {
-    return (
-      <div>Error fetching data. Are you connected to the Wifi?</div>
-    )
-  } else if (query.isPending) {
-    return (
-      <div>Loading data...</div>
-    )
-  } else if (query.isSuccess) {
-    let data = query.data;
-    let values = data.values;
-    let [timestamp, current_values] = values[values.length - 1];
-    let labelPV = `PV: ${valueToLabel(current_values.power_pv, 'W')}`;
-    let labelUsed = `Usage: ${valueToLabel(current_values.power_used, 'W')}`;
-    let labelToGrid = `To Grid: ${valueToLabel(current_values.power_to_grid, 'W')}`;
-    let labelFromGrid = `From Grid: ${valueToLabel(current_values.power_from_grid, 'W')}`;
-
-    return (
-      <Stack spacing={1} direction="row" justifyContent="center">
-        <Stack spacing={1}>
-          <Chip icon={<WbSunny />} label={labelPV} sx={{ backgroundColor: colorPV + 'AA' }} variant="outlined" />
-          <Chip icon={<Euro />} label={labelToGrid} style={{ backgroundColor: colorToGrid +'AA' }} />
-        </Stack>
-        <Stack spacing={1}>
-          <Chip icon={<Power />} label={labelUsed} style={{ backgroundColor: colorPowerUsed +'AA' }} /> 
-          <Chip icon={<ElectricalServices />} label={labelFromGrid} style={{ backgroundColor: colorFromGrid + 'AA' }} />
-        </Stack>
-      </Stack>
-    )
+interface CurrentValues {
+  currentValues: {
+    power_pv: number,
+    power_from_grid: number,
+    power_to_grid: number,
+    power_used: number
   }
+}
 
+function CurrentPowerValues({ currentValues }: CurrentValues) {
   return (
-    <div>idk what happened here</div>
+    <PowerValueCard 
+      currentValues={ currentValues }
+      unit={'W'}
+      title={"Current Power Flow"}
+    />
   )
 }
+
+function EnergyValues({ currentValues }: CurrentValues) {
+  return (
+    <PowerValueCard
+      currentValues={ currentValues }
+      unit={'kWh'}
+      title={"Energy"}
+    />
+  )
+}
+
+function MaxPowerValues({ currentValues }: CurrentValues) {
+  return (
+    <PowerValueCard
+      currentValues={ currentValues }
+      unit={'W'}
+      title={"Maximal Power"}
+    />
+  )
+}
+
+interface PowerValueCardValues {
+  currentValues: {
+    power_pv: number,
+    power_from_grid: number,
+    power_to_grid: number,
+    power_used: number
+  }
+  unit: string
+  title: string
+}
+
+function PowerValueCard({ currentValues, unit, title }: PowerValueCardValues ) {
+  let labelPV = `PV: ${valueToLabel(currentValues.power_pv, unit)}`;
+  let labelUsed = `Usage: ${valueToLabel(currentValues.power_used, unit)}`;
+  let labelToGrid = `To Grid: ${valueToLabel(currentValues.power_to_grid, unit)}`;
+  let labelFromGrid = `From Grid: ${valueToLabel(currentValues.power_from_grid, unit)}`;
+
+  return (
+    <Card variant="outlined">
+    <CardContent>
+    <Typography sx={{ fontSize: 14 }} color="text.secondary" gutterBottom>
+      { title }
+    </Typography>
+    <Stack spacing={1} direction="row" justifyContent="center">
+      <Stack spacing={1}>
+        <Chip icon={<WbSunny />} label={labelPV} sx={{ backgroundColor: colorPV + 'AA' }} variant="outlined" />
+        <Chip icon={<Euro />} label={labelToGrid} style={{ backgroundColor: colorToGrid +'AA' }} />
+      </Stack>
+      <Stack spacing={1}>
+        <Chip icon={<Power />} label={labelUsed} style={{ backgroundColor: colorPowerUsed +'AA' }} /> 
+        <Chip icon={<ElectricalServices />} label={labelFromGrid} style={{ backgroundColor: colorFromGrid + 'AA' }} />
+      </Stack>
+    </Stack>
+    </CardContent>
+    </Card>
+  )
+}
+
 
 function valueToLabel(value: number, unit: string) {
   if (value > 1000) {
@@ -201,25 +233,27 @@ function valueToLabel(value: number, unit: string) {
 }
 
 
-function PowerValueChart({ timeRange }: { timeRange: {start: number, end: number } }) {
-  const queryClient = useQueryClient()
-  // TODO: pull out the query and pass in data
-  const query = useQuery({ queryKey: ['powerValuesWithStats', timeRange], queryFn: () => fetchDataAndStats(timeRange) })
+interface ChartValues {
+  values: Array<
+  [number,
+    {
+      power_pv: number,
+      power_from_grid: number,
+      power_to_grid: number,
+      power_used: number
+    }]>
+}
 
-  if (query.isError) {
-    return (
-      <div>Error fetching data. Are you connected to the Wifi?</div>
-    )
-  } else if (query.isPending) {
-    return (
-      <div>Loading data...</div>
-    )
-  } else if (query.isSuccess) {
-    let data = query.data;
-    let values = data.values;
-    let unpackedValues = unpackValues(values);
-    let timestamps = unpackedValues.timestamps;
-    let powerValues = unpackedValues.powerValues;
+function PowerValueChart({ values }:  ChartValues  ) {
+  let unpackedValues = unpackValues(values);
+  let timestamps = unpackedValues.timestamps;
+  let powerValues = unpackedValues.powerValues;
+
+  // check if we need to display the dates (range over multiple days)
+  let startDate = dayjs.unix(timestamps[0] / 1000);
+  let endDate = dayjs.unix(timestamps[timestamps.length - 1] / 1000);
+  let displayYear = startDate.year !== endDate.year;
+  let displayDate = displayYear || (startDate.month !== endDate.month) || (startDate.day !== endDate.day);
 
   return (
     <LineChart
@@ -227,8 +261,14 @@ function PowerValueChart({ timeRange }: { timeRange: {start: number, end: number
       data: timestamps,
       dataKey: "timestamp",
       valueFormatter: (timestamp, context) => {
-        let date = new Date(timestamp);
-        return date.toLocaleString("de-at");
+        let date = dayjs.unix(timestamp / 1e3);
+        if (displayYear) {
+          return date.format('DD.MM.YYYY H:mm')
+        } else if (displayDate) {
+          return date.format('DD.MM H:mm')
+        } else {
+          return date.format('H:mm')
+        }
       },
       scaleType: "time"
     }]}
@@ -258,14 +298,9 @@ function PowerValueChart({ timeRange }: { timeRange: {start: number, end: number
         color: colorToGrid
       }
     ]}
-    width={800}
-    height={500}
+    width={600}
+    height={700}
     />
-  )
-  }
-
-  return (
-    <div>idk what happened here</div>
   )
 }
 
@@ -309,34 +344,3 @@ function unpackValues(
     powerValues: powerValues
   }
 }
-
-
-
-
-// function TimeRangePicker({ onStartChange }: TimeRangeUpdate) {
-//   return (
-//     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
-//         <div className='row' style={{display: 'flex', justifyContent: 'space-around'}}>
-//         <DateTimePicker
-//           label="Start"
-//           viewRenderers={{
-//             hours: renderTimeViewClock,
-//             minutes: renderTimeViewClock,
-//             seconds: renderTimeViewClock,
-//           }}
-//           onChange={
-//             (value, context) => { value ? onStartChange(value) : null }
-//           }
-//         />
-//         <DateTimePicker
-//           label="End"
-//           viewRenderers={{
-//             hours: renderTimeViewClock,
-//             minutes: renderTimeViewClock,
-//             seconds: renderTimeViewClock,
-//           }}
-//         />
-//         </div>
-//     </LocalizationProvider>
-//   );
-// }
