@@ -22,6 +22,16 @@ import 'dayjs/locale/de';
 import dayjs from 'dayjs';
 import { ElectricalServices, Euro, Power, WbSunny } from '@mui/icons-material';
 
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+
+const forceLightTheme = createTheme({
+  palette: {
+    mode: 'light',  // otherwise, mobile will look bad
+  },
+});
+
+
 
 // Create the query client
 const queryClient = new QueryClient()
@@ -34,6 +44,8 @@ const colorPowerUsed = "#cdd0dc";
 
 function App() {
   return (
+    <ThemeProvider theme={forceLightTheme}>
+      <CssBaseline />
     <QueryClientProvider client={queryClient}>
       <>
         <div>
@@ -45,6 +57,7 @@ function App() {
 
       </>
     </QueryClientProvider>
+    </ThemeProvider>
   )
 
 }
@@ -87,7 +100,7 @@ function MainBody() {
     <Stack spacing={4}>
     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
     <div className='row' style={{display: 'flex', justifyContent: 'space-around'}}>
-    <DatePicker label="Start" defaultValue={ startOfToday }
+    <DatePicker label="Start" defaultValue={ dayjs.unix(timeRange.start / 1000) }
       onChange={
         (value, context) => {
           if (value === null) return
@@ -99,7 +112,7 @@ function MainBody() {
         }
       }
       />
-      <DatePicker label="End" defaultValue={ now }
+      <DatePicker label="End" defaultValue={ dayjs.unix(timeRange.end / 1000) }
       onChange={
         (value, context) => {
           if (value === null) return
@@ -136,7 +149,7 @@ function MainBody() {
 }
 
 function fetchDataAndStats(timeRange: { start: number, end: number }) {
-  let url = `http://0.0.0.0:3000/values-with-stats/${timeRange.start}/${timeRange.end}`
+  let url = `http://192.168.178.40:3000/values-with-stats/${timeRange.start}/${timeRange.end}`
   return fetch(url)
     .then((response) => response.json())
     .then((jsonResponse) => {
@@ -206,12 +219,12 @@ function PowerValueCard({ currentValues, unit, title }: PowerValueCardValues ) {
     <Typography sx={{ fontSize: 14 }} color="text.secondary" gutterBottom>
       { title }
     </Typography>
-    <Stack spacing={1} direction="row" justifyContent="center">
-      <Stack spacing={1}>
+    <Stack direction="row" justifyContent="center">
+      <Stack>
         <Chip icon={<WbSunny />} label={labelPV} sx={{ backgroundColor: colorPV + 'AA' }} variant="outlined" />
         <Chip icon={<Euro />} label={labelToGrid} style={{ backgroundColor: colorToGrid +'AA' }} />
       </Stack>
-      <Stack spacing={1}>
+      <Stack>
         <Chip icon={<Power />} label={labelUsed} style={{ backgroundColor: colorPowerUsed +'AA' }} /> 
         <Chip icon={<ElectricalServices />} label={labelFromGrid} style={{ backgroundColor: colorFromGrid + 'AA' }} />
       </Stack>

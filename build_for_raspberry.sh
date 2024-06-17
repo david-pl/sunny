@@ -19,5 +19,7 @@ cd ../../
 rm -rf raspberry_build
 mkdir -p raspberry_build
 
-cp -r frontend/sunny-ui/dist/ raspberry_build/
+cp -r frontend/sunny-ui/dist/* raspberry_build/
 cp frontend/sunny-ui/dist/index.html raspberry_build/
+
+cp target/armv7-unknown-linux-gnueabihf/release/sunny* raspberry_build/

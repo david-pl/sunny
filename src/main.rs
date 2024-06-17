@@ -38,7 +38,7 @@ struct Args {
 
     // Path to database directory
     #[arg(long)]
-    db_path: String,
+    sunny_home: String,
 
     // Time series segment size
     #[arg(long, default_value_t = 100)]
@@ -157,8 +157,15 @@ where
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    let sunny_home = args.sunny_home;
+    let sunny_path = if sunny_home.ends_with("/") {
+        sunny_home
+    } else {
+        sunny_home + "/"
+    };
+    let db_path = sunny_path.to_owned() + "db";
     let sunny_db =
-        SunnyDB::<PowerValues>::new(args.segment_size, &(&args.db_path), 2, args.loss_threshold);
+        SunnyDB::<PowerValues>::new(args.segment_size, &db_path, 2, args.loss_threshold);
 
     // create an RW lock that locks the entire DB during writes;
     // writes should be pretty fast so that should be fine as we can have multiple readers
@@ -185,16 +192,19 @@ async fn main() {
         .allow_methods([Method::GET])
         .allow_origin(Any);
 
+    let index_route = sunny_path.to_owned() + "index.html";
+    let assets_route = sunny_path + "assets/";
+
     // build our application with a route
     let app = axum::Router::new()
         // `GET /` goes to `root`
         .route_service(
             "/",
-            ServeFile::new("./index.html"),
+            ServeFile::new(index_route),
         )
         .layer(cors.clone())
         .nest_service("/assets",
-            ServeDir::new("./assets/")
+            ServeDir::new(assets_route)
         )
         .layer(cors.clone())
         .route(

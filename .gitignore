@@ -3,3 +3,4 @@
 perf.data*
 flamegraph.svg
 local_build
+raspberry_build
