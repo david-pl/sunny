@@ -28,6 +28,11 @@ struct Args {
     #[arg(short, long)]
     granularity: u64,
 
+
+    // Number of points collected until the average over those points is written in the DB
+    #[arg(long)]
+    average_over: usize,
+
     // Address to which the server is bound
     #[arg(short, long, default_value_t = String::from("0.0.0.0:3000"))]
     bind: String,
@@ -178,7 +183,7 @@ async fn main() {
     println!("Spawning database writer...");
     let granularity = Duration::from_secs(args.granularity);
     tokio::spawn(async move {
-        fetch_and_write_values_to_db(&db_write_lock, granularity, args.url).await;
+        fetch_and_write_values_to_db(&db_write_lock, granularity, args.average_over, args.url).await;
     });
 
     // launch the server
@@ -239,8 +244,10 @@ async fn main() {
 async fn fetch_and_write_values_to_db(
     db_lock: &RwLock<SunnyDB<PowerValues>>,
     granularity: Duration,
+    average_over: usize,
     url: String,
 ) {
+    let mut granular_timeseries = TimeSeries::<PowerValues>::new(average_over);
     let mut pause = interval(granularity);
 
     let full_url = format!(
@@ -248,14 +255,25 @@ async fn fetch_and_write_values_to_db(
         url.strip_suffix("/").unwrap_or(&url)
     );
     loop {
-        pause.tick().await;
         let values = fetch_power_values(&full_url).await;
+        pause.tick().await;
         match values {
             Ok(v) => {
-                let mut sunny_db = db_lock.write().await;
-                sunny_db.insert_value_at_current_time(v);
+                granular_timeseries.insert_value_at_current_time(v);
             }
             Err(e) => println!("Error encountered while trying to fetch latest data: {}", e),
+        }
+
+        if granular_timeseries.len() >= average_over {
+            let average = granular_timeseries.average();
+            match average {
+                Some(avg) => {
+                    let mut sunny_db = db_lock.write().await;
+                    sunny_db.insert_value_at_current_time(avg);
+                },
+                None => ()
+            }
+            granular_timeseries = TimeSeries::<PowerValues>::new(average_over);
         }
     }
 }

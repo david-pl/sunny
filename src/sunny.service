@@ -2,7 +2,7 @@
 Description=Sunny
 
 [Service]
-ExecStart=/home/david/sunny/sunny -g 120 --sunny-path /home/david/sunny/ --url 192.168.178.35 --segment-size 200 --loss-threshold 5
+ExecStart=/home/david/sunny/sunny -g 1 --average-over 120 --sunny-home /home/david/sunny/ --url 192.168.178.35 --segment-size 200 --loss-threshold 5
 
 [Install]
 WantedBy=multi-user.target
