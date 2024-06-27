@@ -15,12 +15,12 @@ import { LocalizationProvider } from '@mui/x-date-pickers';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import Chip from '@mui/material/Chip';
 import Card from '@mui/material/Card';
-import { CardContent } from '@mui/material';
+import { CardContent, IconButton } from '@mui/material';
 import Typography from '@mui/material/Typography';
 
 import 'dayjs/locale/de';
 import dayjs from 'dayjs';
-import { ElectricalServices, Euro, Power, WbSunny } from '@mui/icons-material';
+import { ElectricalServices, Euro, Power, WbSunny, ArrowBackIos, ArrowForwardIos } from '@mui/icons-material';
 
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -66,13 +66,13 @@ export default App
 
 
 function MainBody() {
-  const now = dayjs();
+  let endOfToday = dayjs().endOf('day');
   let startOfToday = dayjs().startOf('day');
 
   const [timeRange, setTimeRange] = useState(
     {
       start: startOfToday.unix() * 1000,
-      end: now.unix() * 1000
+      end: endOfToday.unix() * 1000
     }
   )
 
@@ -100,6 +100,22 @@ function MainBody() {
     <Stack spacing={4}>
     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
     <div className='row' style={{display: 'flex', justifyContent: 'space-around'}}>
+    <IconButton
+      onClick={
+        // TODO: make this onClick properly update the DatePicker values
+        () => {
+          let oneDayInMillis = 60 * 60 * 24 * 1000;
+          let newStart = timeRange.start - oneDayInMillis;
+          let newEnd = timeRange.end - oneDayInMillis;
+          setTimeRange({
+            start: newStart,
+            end: newEnd,
+          })
+        }
+      }
+    >
+      <ArrowBackIos />
+    </IconButton>
     <DatePicker label="Start" defaultValue={ dayjs.unix(timeRange.start / 1000) }
       onChange={
         (value, context) => {
@@ -124,6 +140,21 @@ function MainBody() {
         }
       }
       />
+      <IconButton
+      onClick={
+        () => {
+          let oneDayInMillis = 60 * 60 * 24 * 1000;
+          let newStart = timeRange.start + oneDayInMillis;
+          let newEnd = timeRange.end + oneDayInMillis;
+          setTimeRange({
+            start: newStart,
+            end: newEnd,
+          })
+        }
+      }
+      >
+      <ArrowForwardIos />
+    </IconButton>
     </div>
     </LocalizationProvider>
 
